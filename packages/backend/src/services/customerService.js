@@ -100,3 +100,100 @@ export async function createCustomer({
     },
   };
 }
+
+/**
+ * Get all customers (paginated, filtered, excluding deleted)
+ */
+export async function getCustomers({ page = 1, limit = 10, search = '' }) {
+  const offset = (page - 1) * limit;
+
+  let query = supabaseAdmin
+    .from('profiles')
+    .select('*', { count: 'exact' })
+    .eq('role', 'customer')
+    .is('deleted_at', null)
+    .range(offset, offset + limit - 1)
+    .order('created_at', { ascending: false });
+
+  if (search) {
+    query = query.or(`email.ilike.%${search}%,username.ilike.%${search}%,business_name.ilike.%${search}%`);
+  }
+
+  const { data, error, count } = await query;
+
+  if (error) throw error;
+
+  return {
+    data,
+    meta: {
+      total: count,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(count / limit),
+    },
+  };
+}
+
+/**
+ * Get a single customer by ID
+ */
+export async function getCustomerById(id) {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', id)
+    .eq('role', 'customer')
+    .is('deleted_at', null)
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error('Customer not found');
+
+  return data;
+}
+
+/**
+ * Update a customer profile
+ */
+export async function updateCustomer(id, updates) {
+  // Prevent updating restricted fields
+  const allowedUpdates = {};
+  const allowedFields = [
+    'username',
+    'business_name',
+    'logo',
+    'contact_number',
+    'address',
+  ];
+
+  allowedFields.forEach((field) => {
+    if (updates[field] !== undefined) {
+      allowedUpdates[field] = updates[field];
+    }
+  });
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .update(allowedUpdates)
+    .eq('id', id)
+    .eq('role', 'customer')
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Soft delete a customer
+ */
+export async function deleteCustomer(id) {
+  const { error } = await supabaseAdmin
+    .from('profiles')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('id', id)
+    .eq('role', 'customer');
+
+  if (error) throw error;
+  return true;
+}

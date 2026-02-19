@@ -1,0 +1,17 @@
+.dashboard-layout {
+  min-height: 100vh;
+}
+
+.dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #4f46e5;
+  padding: 0 24px;
+}
+
+.dashboard-content {
+  padding: 24px;
+  background: #f0f2f5;
+  min-height: calc(100vh - 64px);
+}

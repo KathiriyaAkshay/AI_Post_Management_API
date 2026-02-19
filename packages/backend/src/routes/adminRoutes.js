@@ -9,13 +9,7 @@ import {
 
 const router = Router();
 
-router.post(
-  '/create-customer',
-  authMiddleware,
-  roleCheck(['admin']),
-  createCustomerValidator,
-  handleValidation,
-  createCustomerHandler
-);
+// Deprecated: Customer creation is now handled in customerRoutes.js
+// router.post('/create-customer', ...);
 
 export default router;

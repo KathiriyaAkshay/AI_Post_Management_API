@@ -1,20 +1,22 @@
 {
-  "name": "ai-post-management-api",
+  "name": "ai-post-management",
   "version": "1.0.0",
-  "description": "AI Image Generation platform onboarding API",
-  "main": "src/index.js",
-  "type": "module",
+  "description": "AI Post Management Platform - Monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
-    "start": "node src/index.js",
-    "dev": "node --watch src/index.js"
+    "dev": "npm run dev --workspaces",
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run dev --workspace=admin-panel",
+    "build": "npm run build --workspaces",
+    "build:frontend": "npm run build --workspace=admin-panel",
+    "install:all": "npm install"
   },
-  "dependencies": {
-    "@supabase/supabase-js": "^2.45.0",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "express-validator": "^7.1.0",
-    "nodemailer": "^6.9.15",
-    "stripe": "^17.3.1",
-    "swagger-ui-express": "^5.0.0"
+  "devDependencies": {},
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }
