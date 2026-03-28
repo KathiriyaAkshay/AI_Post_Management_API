@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "stitch_nexus_hub_prd",
+			"path": "../../../../../.."
+		},
+		{
+			"name": "image_generation",
+			"path": "../../../../../../../../Desktop/kg/image_generation"
+		}
+	],
+	"settings": {}
+}

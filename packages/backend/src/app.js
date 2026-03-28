@@ -5,30 +5,40 @@ import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import customerRoutes from './routes/customerRoutes.js';
 import promptRoutes from './routes/promptRoutes.js';
+import campaignAdminRoutes from './routes/campaignAdminRoutes.js';
+import campaignOptionsAdminRoutes from './routes/campaignOptionsAdminRoutes.js';
+import customerApiRoutes from './routes/customerApiRoutes.js';
+import storageRoutes from './routes/storageRoutes.js';
 import { swaggerSpec, swaggerOptions } from './config/swagger.js';
 
 const app = express();
 
+// OpenAPI spec as JSON for programmatic reference (client SDK generation, etc.)
+app.get('/api-docs.json', (req, res) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(swaggerSpec);
+});
+
 // CORS configuration
 const corsOptions = {
-  origin: [
-    'http://localhost:5173', // Vite dev server
-    'http://localhost:3000', // Backend (for Swagger)
-    process.env.FRONTEND_URL,
-  ].filter(Boolean),
+  origin: ['*'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, swaggerOptions));
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
+app.use('/admin/campaigns', campaignAdminRoutes);
+app.use('/admin/campaign-options', campaignOptionsAdminRoutes);
 app.use('/customers', customerRoutes);
 app.use('/prompts', promptRoutes);
+app.use('/api/customer', customerApiRoutes);
+app.use('/storage', storageRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ success: true, data: { status: 'ok' } });

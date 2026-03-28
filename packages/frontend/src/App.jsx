@@ -11,6 +11,9 @@ import Dashboard from './pages/Dashboard';
 import ClientList from './pages/Clients/ClientList';
 import ClientForm from './pages/Clients/ClientForm';
 import PromptManagement from './pages/Prompts/PromptManagement';
+import CampaignList from './pages/Campaigns/CampaignList';
+import CampaignForm from './pages/Campaigns/CampaignForm';
+import CampaignOptionsList from './pages/CampaignOptions/CampaignOptionsList';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/MainLayout';
 import './styles/main.scss';
@@ -89,6 +92,46 @@ function App() {
                   <ProtectedRoute>
                     <MainLayout>
                       <PromptManagement />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/campaigns"
+                element={
+                  <ProtectedRoute>
+                    <MainLayout>
+                      <CampaignList />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/campaigns/new"
+                element={
+                  <ProtectedRoute>
+                    <MainLayout>
+                      <CampaignForm />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/campaigns/:id"
+                element={
+                  <ProtectedRoute>
+                    <MainLayout>
+                      <CampaignForm />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/campaign-options"
+                element={
+                  <ProtectedRoute>
+                    <MainLayout>
+                      <CampaignOptionsList />
                     </MainLayout>
                   </ProtectedRoute>
                 }

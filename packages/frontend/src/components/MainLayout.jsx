@@ -5,6 +5,8 @@ import {
     LogoutOutlined,
     MenuUnfoldOutlined,
     MenuFoldOutlined,
+    PictureOutlined,
+    SettingOutlined,
 } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -36,6 +38,16 @@ const MainLayout = ({ children }) => {
             key: '/clients',
             icon: <UserOutlined />,
             label: 'Clients',
+        },
+        {
+            key: '/campaigns',
+            icon: <PictureOutlined />,
+            label: 'Prebuilt Campaigns',
+        },
+        {
+            key: '/campaign-options',
+            icon: <SettingOutlined />,
+            label: 'Campaign Options',
         },
     ];
 
