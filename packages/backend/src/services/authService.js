@@ -1,10 +1,21 @@
 import { supabase } from '../config/supabase.js';
 import { supabaseAdmin } from '../config/supabase.js';
 
+async function revokeSession(accessToken) {
+  if (!supabaseAdmin || !accessToken) return;
+  const { error } = await supabaseAdmin.auth.admin.signOut(accessToken, 'global');
+  if (error) {
+    console.error('Failed to revoke session after failed admin login', error.message);
+  }
+}
+
 /**
- * Login user (admin or customer) via email or username
+ * Login user (admin or customer) via email or username.
+ * @param {object} [options]
+ * @param {boolean} [options.requireAdmin] - If true, only users with profiles.role === 'admin' receive a session (others are signed out server-side).
  */
-export async function login(identifier, password) {
+export async function login(identifier, password, options = {}) {
+  const { requireAdmin = false } = options;
   let email = identifier;
 
   // If identifier is not an email format, treat it as username and look up email
@@ -42,6 +53,18 @@ export async function login(identifier, password) {
       .eq('id', data.user.id)
       .single();
     profile = profileData;
+  }
+
+  if (requireAdmin) {
+    const token = data.session?.access_token;
+    if (!profile) {
+      await revokeSession(token);
+      throw new Error('Admin profile not found');
+    }
+    if (profile.role !== 'admin') {
+      await revokeSession(token);
+      throw new Error('Admin access only');
+    }
   }
 
   return {

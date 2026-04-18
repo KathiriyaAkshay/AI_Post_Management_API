@@ -25,6 +25,32 @@ export async function loginHandler(req, res) {
   }
 }
 
+function isAdminPortalForbidden(err) {
+  const msg = err.message || '';
+  return msg === 'Admin access only' || msg === 'Admin profile not found';
+}
+
+/** Admin UI login: requires profiles.role === admin */
+export async function adminLoginHandler(req, res) {
+  try {
+    const { identifier, password } = req.body;
+    const result = await login(identifier, password, { requireAdmin: true });
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: result.user,
+        session: result.session,
+      },
+    });
+  } catch (err) {
+    const status = isAdminPortalForbidden(err) ? 403 : 401;
+    return res.status(status).json({
+      success: false,
+      error: err.message || 'Login failed',
+    });
+  }
+}
+
 export async function forgotPasswordHandler(req, res) {
   try {
     const { email } = req.body;
