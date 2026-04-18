@@ -8,15 +8,16 @@ import {
   cloneCampaign,
 } from '../services/campaignService.js';
 import {
-  saveGeneratedImage,
   getAssets,
   getAssetById,
   getDashboardStats,
   updateAsset,
 } from '../services/assetService.js';
-import { buildPrompt, generateImage } from '../services/imageGenerationService.js';
-import { getPromptParts } from '../services/promptService.js';
 import { getCampaignOptions } from '../services/campaignOptionsService.js';
+import { isAsyncImageGenerationEnabled } from '../config/generationConfig.js';
+import { insertGenerationJob, updateGenerationJob, getGenerationJobForUser } from '../services/generationJobService.js';
+import { enqueueImageGeneration } from '../queues/imageGenerationQueue.js';
+import { executeCustomerImageGeneration } from '../services/customerGenerationService.js';
 
 /* ─────────────────────────────────────────────
    Profile
@@ -151,81 +152,64 @@ export async function cloneCampaignHandler(req, res) {
  */
 export async function generateImageHandler(req, res) {
   try {
-    const {
-      campaignId,
-      basePrompt = '',
-      name: assetName,
-      visualStyle,
-      aspectRatio,
-      mood,
-      modelEnabled,
-      genderFocus,
-    } = req.body;
+    if (isAsyncImageGenerationEnabled()) {
+      const job = await insertGenerationJob(req.user.id, req.body);
+      try {
+        await enqueueImageGeneration({ jobId: job.id, userId: req.user.id, body: req.body });
+      } catch (queueErr) {
+        await updateGenerationJob(job.id, {
+          status: 'failed',
+          error_message: queueErr?.message || 'Queue error',
+        });
+        return res.status(503).json({
+          success: false,
+          error: 'Generation queue temporarily unavailable',
+        });
+      }
+      return res.status(202).json({
+        success: true,
+        data: { jobId: job.id, status: 'pending' },
+      });
+    }
 
-    let finalVisualStyle = visualStyle;
-    let finalAspectRatio = aspectRatio ?? '1:1';
-    let finalMood = mood;
-    let finalModelEnabled = modelEnabled ?? false;
-    let finalGenderFocus = genderFocus ?? 'neutral';
-    let promptParts = [];
-    let resolvedCampaignId = campaignId || null;
+    const asset = await executeCustomerImageGeneration(req.user.id, req.body);
+    return res.status(201).json({ success: true, data: asset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
 
-    let customSections = [];
+/**
+ * GET /api/customer/generation-jobs/:jobId
+ * Poll async job status when WebSocket events were missed (e.g. client connected after job finished).
+ */
+export async function getGenerationJobHandler(req, res) {
+  try {
+    const job = await getGenerationJobForUser(req.params.jobId, req.user.id);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job not found' });
+    }
 
-    // If campaignId provided, load campaign settings as defaults
-    if (campaignId) {
-      const campaign = await getCustomerCampaignById(campaignId, req.user.id);
-      finalVisualStyle = finalVisualStyle ?? campaign.visual_style;
-      finalAspectRatio = aspectRatio ?? campaign.aspect_ratio ?? '1:1';
-      finalMood = finalMood ?? campaign.mood;
-      finalModelEnabled = modelEnabled ?? campaign.model_enabled ?? false;
-      finalGenderFocus = genderFocus ?? campaign.gender_focus ?? 'neutral';
-      resolvedCampaignId = campaign.id;
-      customSections = Array.isArray(campaign.custom_sections) ? campaign.custom_sections : [];
-
-      // Load prompt parts if campaign has a product type
-      if (campaign.product_type_id) {
-        const parts = await getPromptParts(campaign.product_type_id);
-        promptParts = (parts || []).map((p) => p.content);
+    let asset = null;
+    if (job.status === 'completed' && job.asset_id) {
+      try {
+        asset = await getAssetById(job.asset_id, req.user.id);
+      } catch {
+        asset = null;
       }
     }
 
-    // Build the final prompt
-    const finalPrompt = buildPrompt({
-      basePrompt,
-      visualStyle: finalVisualStyle,
-      mood: finalMood,
-      modelEnabled: finalModelEnabled,
-      genderFocus: finalGenderFocus,
-      promptParts,
-      customSections,
+    res.json({
+      success: true,
+      data: {
+        jobId: job.id,
+        status: job.status,
+        errorMessage: job.error_message,
+        createdAt: job.created_at,
+        updatedAt: job.updated_at,
+        asset,
+      },
     });
-
-    // Call the generation service
-    const result = await generateImage({
-      prompt: finalPrompt,
-      visualStyle: finalVisualStyle,
-      aspectRatio: finalAspectRatio,
-      mood: finalMood,
-      modelEnabled: finalModelEnabled,
-      genderFocus: finalGenderFocus,
-    });
-
-    // Persist the generated image
-    const asset = await saveGeneratedImage({
-      userId: req.user.id,
-      campaignId: resolvedCampaignId,
-      promptUsed: finalPrompt,
-      imageUrl: result.imageUrl,
-      width: result.width,
-      height: result.height,
-      format: result.format,
-      colorSpace: 'sRGB',
-      metadata: { generatedAt: new Date().toISOString() },
-      name: typeof assetName === 'string' && assetName.trim() ? assetName.trim() : null,
-    });
-
-    res.status(201).json({ success: true, data: asset });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

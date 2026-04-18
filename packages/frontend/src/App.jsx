@@ -14,6 +14,7 @@ import PromptManagement from './pages/Prompts/PromptManagement';
 import CampaignList from './pages/Campaigns/CampaignList';
 import CampaignForm from './pages/Campaigns/CampaignForm';
 import CampaignOptionsList from './pages/CampaignOptions/CampaignOptionsList';
+import ImageGenerationAdmin from './pages/ImageGeneration/ImageGenerationAdmin';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/MainLayout';
 import './styles/main.scss';
@@ -44,7 +45,6 @@ function App() {
         >
           <BrowserRouter>
             <Routes>
-              <Route path="/login" element={<Login />} />
               <Route path="/login" element={<Login />} />
               <Route
                 path="/dashboard"
@@ -132,6 +132,16 @@ function App() {
                   <ProtectedRoute>
                     <MainLayout>
                       <CampaignOptionsList />
+                    </MainLayout>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/image-generation"
+                element={
+                  <ProtectedRoute>
+                    <MainLayout>
+                      <ImageGenerationAdmin />
                     </MainLayout>
                   </ProtectedRoute>
                 }

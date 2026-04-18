@@ -7,6 +7,7 @@ import {
     MenuFoldOutlined,
     PictureOutlined,
     SettingOutlined,
+    ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -48,6 +49,11 @@ const MainLayout = ({ children }) => {
             key: '/campaign-options',
             icon: <SettingOutlined />,
             label: 'Campaign Options',
+        },
+        {
+            key: '/image-generation',
+            icon: <ThunderboltOutlined />,
+            label: 'Image generation',
         },
     ];
 

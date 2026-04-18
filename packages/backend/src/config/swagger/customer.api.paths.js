@@ -260,17 +260,48 @@ export const customerApiPaths = {
       operationId: 'customerGenerateImage',
       summary: 'Generate an image',
       description: `Generates an AI image using campaign settings and an optional free-text prompt.
-        
-**Prompt assembly order:**
+
+---
+
+### Async + WebSocket (target contract)
+
+**ADR:** \`docs/adr/0001-async-image-generation-websocket.md\` · **Diagrams:** \`docs/image-generation-flow.md\`
+
+1. Client opens an **authenticated Socket.io** connection **before** (or immediately after) calling generate — if the job finishes while nobody is in room \`user:<yourUserId>\`, the push is **not buffered** and you will miss events.
+2. \`POST /api/customer/generate\` returns **\`202\`** with \`jobId\` (schema: **GenerationJobAccepted**).
+3. Server processes the job; on success it persists **Asset** then emits **\`generation.completed\`** (**WsEventGenerationCompleted**). On failure: **\`generation.failed\`**. Optional: **\`generation.progress\`**.
+4. **Poll fallback:** \`GET /api/customer/generation-jobs/:jobId\` returns status and \`asset\` when \`completed\` (Postman-friendly).
+
+OpenAPI 3.0 does not describe WebSocket endpoints; event names and JSON bodies are documented via **components/schemas** \`WsEventGeneration*\`.
+
+---
+
+### Prompt assembly order
+
+**A — Platform preamble (prepended to everything below)**  
+Active \`prompt_building_blocks\` with \`block_key = image_gen_platform_system\` and \`category = system\` (global \`product_type_id\` NULL, or scoped override if the campaign has \`product_type_id\`). If missing, env \`IMAGE_GENERATION_SYSTEM_PROMPT\` is used. Joined with a blank line before part B.
+
+**B — User-facing prompt** (same order as \`buildPrompt()\`)
+
 1. \`basePrompt\` (user's free-text)
-2. Prompt parts from the campaign's product type
+2. Prompt parts from the campaign's product type (only when \`campaignId\` is set **and** the campaign has \`product_type_id\`)
 3. \`visualStyle\` and \`mood\`
 4. Model/gender modifier if enabled
 5. Custom sections sorted by \`prompt_weight\` (high → medium → low)
 
 If \`campaignId\` is supplied, campaign settings are used as defaults and any per-field overrides in the request body take precedence.
 
-**Backend behavior:** Unless \`IMAGE_GENERATION_USE_EXTERNAL=true\` and \`IMAGE_GENERATION_API_URL\` are set, the server uses mock images (placeholders), not a real provider.`,
+The persisted **\`prompt_used\`** field is the **full** string (A + B) sent to the image provider.
+
+### Current deployment behavior
+
+If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`** and the full **Asset** in one round-trip (synchronous). With **\`REDIS_URL\`** set (and \`IMAGE_GENERATION_ASYNC\` not \`false\`), it responds **\`202\`** and processes the job via **BullMQ**, notifying the client over **Socket.io** (\`/socket.io\`). **Socket JWT:** \`auth.token\`, or header \`Authorization: Bearer <jwt>\`, or query \`token\` / \`access_token\` (same Supabase access JWT as REST).
+
+### Image backend (providers)
+
+- **Legacy first:** If \`IMAGE_GENERATION_USE_EXTERNAL=true\` and \`IMAGE_GENERATION_API_URL\` are set, requests go to that HTTP gateway (env API key).
+- **Otherwise:** \`image_generation_settings.active_provider\` selects **mock**, **OpenAI**, **Google (Imagen)**, **Grok**, or **external_http**. Admin: \`/admin/image-generation/*\`.
+`,
       tags: ['Customer API'],
       security,
       requestBody: {
@@ -294,9 +325,55 @@ If \`campaignId\` is supplied, campaign settings are used as defaults and any pe
         }}},
       },
       responses: {
-        201: assetResponse('Generated image saved as asset'),
-        401: err401, 403: err403,
+        201: {
+          ...assetResponse('**Synchronous (current).** Generated image saved as asset; full row returned in this response.'),
+        },
+        202: {
+          description:
+            '**Async.** Job accepted. Prefer Socket.io **already connected** before this call, or poll `GET /api/customer/generation-jobs/{jobId}` until `status` is `completed` / `failed`.',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/GenerationJobAccepted' },
+            },
+          },
+        },
+        401: err401,
+        403: err403,
         500: { description: 'Generation failed', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+      },
+    },
+  },
+
+  '/api/customer/generation-jobs/{jobId}': {
+    get: {
+      operationId: 'customerGetGenerationJob',
+      summary: 'Get async generation job status',
+      description:
+        'Returns `pending` | `processing` | `completed` | `failed` for your job. When `completed`, `asset` is the saved **Asset** (same shape as sync `POST /generate` response). Use when Socket.io events were missed.',
+      tags: ['Customer API'],
+      security,
+      parameters: [
+        { in: 'path', name: 'jobId', required: true, schema: { type: 'string', format: 'uuid' } },
+      ],
+      responses: {
+        200: {
+          description: 'Job status',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  success: { type: 'boolean', example: true },
+                  data: { $ref: '#/components/schemas/GenerationJobStatus' },
+                },
+              },
+            },
+          },
+        },
+        401: err401,
+        403: err403,
+        404: err404,
+        500: { description: 'Server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
       },
     },
   },

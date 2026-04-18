@@ -10,6 +10,7 @@ import {
   deleteCampaignHandler,
   cloneCampaignHandler,
   generateImageHandler,
+  getGenerationJobHandler,
   listAssetsHandler,
   getAssetHandler,
   patchAssetHandler,
@@ -48,6 +49,7 @@ router.post('/campaigns/:id/clone', cloneCampaignHandler);
 
 // Image generation
 router.post('/generate', generateImageHandler);
+router.get('/generation-jobs/:jobId', getGenerationJobHandler);
 
 // Assets
 router.get('/assets', listAssetsHandler);
