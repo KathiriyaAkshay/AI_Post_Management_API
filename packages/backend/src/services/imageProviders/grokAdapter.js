@@ -33,7 +33,7 @@ function xaiBaseUrl() {
  * @param {string} params.apiKey
  * @param {string | null | undefined} [params.model]
  */
-export async function generateWithGrok({ prompt, aspectRatio = '1:1', apiKey, model: modelParam }) {
+export async function generateWithGrok({ prompt, aspectRatio = '1:1', apiKey, model: modelParam, generationMode }) {
   if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
     throw new Error('Grok image generation: missing API key (store an xAI key under admin → grok)');
   }
@@ -85,6 +85,11 @@ export async function generateWithGrok({ prompt, aspectRatio = '1:1', apiKey, mo
       height,
       format: 'PNG',
       promptUsed: prompt,
+      metadata: {
+        provider: 'grok',
+        model,
+        generationMode: generationMode || 'text',
+      },
     };
   }
   if (typeof b64 === 'string' && b64.length > 0) {
@@ -95,6 +100,11 @@ export async function generateWithGrok({ prompt, aspectRatio = '1:1', apiKey, mo
       height,
       format: 'PNG',
       promptUsed: prompt,
+      metadata: {
+        provider: 'grok',
+        model,
+        generationMode: generationMode || 'text',
+      },
     };
   }
 

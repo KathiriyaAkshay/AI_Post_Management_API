@@ -76,13 +76,13 @@ Users can add **custom prompt sections** to any campaign. Each section has a \`t
 
 ## Image generation — platform system prompt
 
-Every customer generation prepends a **platform preamble** to the user-facing prompt before calling the image provider. **Source of truth:** active global \`prompt_building_blocks\` row with \`block_key = image_gen_platform_system\` and \`category = system\` (migration \`015_seed_platform_image_system_block.sql\` seeds a default). **Optional override:** same \`block_key\` with a non-null \`product_type_id\` when campaigns carry a product type. **Fallback:** env \`IMAGE_GENERATION_SYSTEM_PROMPT\` if the DB row is missing or empty. **Admin:** edit via **Prompt blocks (Admin)**. Stored \`prompt_used\` on the asset is the **full** string sent to the model (preamble + user prompt).
+Every customer generation prepends a **platform preamble** to the user-facing prompt before calling the image provider. **Source of truth:** active global \`prompt_building_blocks\` row with \`block_key = image_gen_platform_system\` and \`category = system\` (migration \`015_seed_platform_image_system_block.sql\` seeds a default). **Optional override:** same \`block_key\` with a non-null \`product_type_id\` when campaigns carry a product type. If no matching active row exists, no preamble is prepended (configure via Admin → **Prompt blocks**). Stored \`prompt_used\` on the asset is the **full** string sent to the model (preamble + user prompt).
 
 ## Image providers (admin + runtime)
 
 - **Active provider** is read from \`image_generation_settings\` (\`GET/PUT /admin/image-generation/settings\`). Default after migration \`016\` is **\`mock\`**.
 - **Encrypted keys:** \`PUT /admin/image-generation/credentials/:provider\` with \`api_key\`; stored using **AES-256-GCM** with per-row **IV** and **auth tag**. Master key: env **\`PROVIDER_KEYS_MASTER_KEY\`** (32-byte base64 or 64 hex chars).
-- **OpenAI:** direct \`/v1/images/generations\`; optional \`OPENAI_IMAGE_MODEL\` (default \`dall-e-3\`).
+- **OpenAI:** \`/v1/images/generations\` for text-only; when \`productReferenceUrl\` and/or \`logoUrl\` are set, \`/v1/images/edits\` with a GPT Image model (\`OPENAI_IMAGE_EDIT_MODEL\` or \`gpt-image-1\` if the configured generations model is not \`gpt-image*\`). See \`openaiAdapter.js\` and \`generationContext.js\`.
 - **Google / Grok:** adapters are placeholders until implemented.
 - **Legacy HTTP gateway:** if \`IMAGE_GENERATION_USE_EXTERNAL=true\` and \`IMAGE_GENERATION_API_URL\` are set, that path **overrides** DB routing (same as before migration \`016\`).
     `,

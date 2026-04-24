@@ -107,6 +107,9 @@ export const customerApiPaths = {
                     id: { type: 'string', format: 'uuid' },
                     image_url: { type: 'string' },
                     prompt_used: { type: 'string' },
+                    product_reference_input_url: { type: 'string', format: 'uri', nullable: true },
+                    product_reference_resolved_url: { type: 'string', format: 'uri', nullable: true },
+                    brand_logo_url: { type: 'string', format: 'uri', nullable: true },
                     name: { type: 'string', nullable: true },
                     is_liked: { type: 'boolean' },
                     created_at: { type: 'string', format: 'date-time' },
@@ -279,19 +282,20 @@ OpenAPI 3.0 does not describe WebSocket endpoints; event names and JSON bodies a
 ### Prompt assembly order
 
 **A — Platform preamble (prepended to everything below)**  
-Active \`prompt_building_blocks\` with \`block_key = image_gen_platform_system\` and \`category = system\` (global \`product_type_id\` NULL, or scoped override if the campaign has \`product_type_id\`). If missing, env \`IMAGE_GENERATION_SYSTEM_PROMPT\` is used. Joined with a blank line before part B.
+Active \`prompt_building_blocks\` with \`block_key = image_gen_platform_system\` and \`category = system\` (global \`product_type_id\` NULL, or scoped override if the campaign has \`product_type_id\`). If missing, nothing is prepended (run migration \`015\` or create the row in Admin → prompt blocks). Joined with a blank line before part B.
 
 **B — User-facing prompt** (same order as \`buildPrompt()\`)
 
-1. \`basePrompt\` (user's free-text)
+1. Campaign \`description\` (when \`campaignId\` is set) then request \`basePrompt\`, joined with a blank line when both are present; request-only when there is no campaign
 2. Prompt parts from the campaign's product type (only when \`campaignId\` is set **and** the campaign has \`product_type_id\`)
 3. \`visualStyle\` and \`mood\`
 4. Model/gender modifier if enabled
 5. Custom sections sorted by \`prompt_weight\` (high → medium → low)
+6. Profile \`business_name\` / \`logo\` (when set). **Product reference URL:** optional body \`productReferenceUrl\` always wins when set. For **customer-owned** campaigns, if omitted, the row's \`product_reference_url\` is used. For **platform prebuilt** campaigns, the template's \`product_reference_url\` is **not** reused (one shared row per template)—send \`productReferenceUrl\` per generation so each user can supply their own product shot. Branding / product hints go into the text prompt; \`logo_url\` and \`product_reference_url\` are also sent on the legacy external HTTP gateway when set. OpenAI DALL-E 3 is text-only.
 
 If \`campaignId\` is supplied, campaign settings are used as defaults and any per-field overrides in the request body take precedence.
 
-The persisted **\`prompt_used\`** field is the **full** string (A + B) sent to the image provider.
+The persisted **\`prompt_used\`** field is the **full** string (A + B) sent to the image provider. Each **Asset** row also stores **\`product_reference_input_url\`**, **\`product_reference_resolved_url\`**, and **\`brand_logo_url\`** for that generation (see **Asset** schema).
 
 ### Current deployment behavior
 
@@ -300,7 +304,7 @@ If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`*
 ### Image backend (providers)
 
 - **Legacy first:** If \`IMAGE_GENERATION_USE_EXTERNAL=true\` and \`IMAGE_GENERATION_API_URL\` are set, requests go to that HTTP gateway (env API key).
-- **Otherwise:** \`image_generation_settings.active_provider\` selects **mock**, **OpenAI**, **Google (Imagen)**, **Grok**, or **external_http**. Admin: \`/admin/image-generation/*\`.
+- **Otherwise:** \`image_generation_settings.active_provider\` selects **mock**, **OpenAI**, **Google (Imagen)**, **Grok**, or **external_http**. Admin: \`/admin/image-generation/*\`. **OpenAI** uses **edits** (reference images) when \`productReferenceUrl\` / profile-derived \`logoUrl\` are present; other providers still use their text path until extended.
 `,
       tags: ['Customer API'],
       security,
@@ -320,6 +324,12 @@ If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`*
               type: 'string',
               example: 'Cyberpunk City',
               description: 'Optional display title stored on the asset (asset library card)',
+            },
+            productReferenceUrl: {
+              type: 'string',
+              format: 'uri',
+              description:
+                'Per-request product reference image (HTTPS). Overrides the campaign stored URL when both exist. For prebuilt campaigns, send this each time—the template row URL is not applied so each user can use their own product image.',
             },
           },
         }}},
@@ -383,11 +393,13 @@ If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`*
     get: {
       operationId: 'customerListAssets',
       summary: 'List generated image assets',
+      description:
+        'Paginated list. Omits per-row `metadata` JSON in this response (use GET `/api/customer/assets/{id}` for full metadata). Pass `search`, `page`, and `limit` as **query** parameters — not a JSON body.',
       tags: ['Customer API'],
       security,
       parameters: [
-        { in: 'query', name: 'page', schema: { type: 'integer', default: 1 } },
-        { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 } },
+        { in: 'query', name: 'page', schema: { type: 'integer', default: 1, minimum: 1 }, description: '1-based page' },
+        { in: 'query', name: 'limit', schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 } },
         { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Search by prompt or display name' },
       ],
       responses: {

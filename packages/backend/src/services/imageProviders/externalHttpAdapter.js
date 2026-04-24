@@ -10,6 +10,9 @@ export async function generateWithExternalHttp({
   mood,
   modelEnabled,
   genderFocus,
+  logoUrl,
+  productReferenceUrl,
+  generationMode,
   extra = {},
 }) {
   const apiUrl = process.env.IMAGE_GENERATION_API_URL?.trim();
@@ -34,6 +37,11 @@ export async function generateWithExternalHttp({
       mood,
       model_enabled: modelEnabled,
       gender_focus: genderFocus,
+      ...(typeof logoUrl === 'string' && logoUrl.trim() ? { logo_url: logoUrl.trim() } : {}),
+      ...(typeof productReferenceUrl === 'string' && productReferenceUrl.trim()
+        ? { product_reference_url: productReferenceUrl.trim() }
+        : {}),
+      ...(generationMode ? { generation_mode: generationMode } : {}),
       ...extra,
     }),
   });
@@ -51,5 +59,10 @@ export async function generateWithExternalHttp({
     height: result.height || dimensions.height,
     format: result.format || 'PNG',
     promptUsed: prompt,
+    metadata: {
+      provider: 'external_http',
+      model: result.model || null,
+      generationMode: generationMode || 'text',
+    },
   };
 }

@@ -18,7 +18,7 @@ Image generation can take a long time. Blocking the HTTP request until the image
 
 ### Platform system prompt (related)
 
-Customer image generation prepends a **global platform preamble** from **`prompt_building_blocks`** (`block_key = image_gen_platform_system`, `category = system`), with env **`IMAGE_GENERATION_SYSTEM_PROMPT`** as fallback. This is independent of **`product_type_id`** on campaigns; see `docs/image-generation-flow.md` and Swagger API overview.
+Customer image generation prepends a **global platform preamble** from **`prompt_building_blocks`** (`block_key = image_gen_platform_system`, `category = system`) when an active row exists (migration `015` seeds a default). There is no application-level string fallback; see `docs/image-generation-flow.md` and Swagger API overview.
 
 ## Product context & default infrastructure
 

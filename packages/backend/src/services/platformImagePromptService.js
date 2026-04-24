@@ -13,12 +13,9 @@ export const PLATFORM_IMAGE_SYSTEM_BLOCK_KEY = 'image_gen_platform_system';
  *
  * Resolution order:
  * 1. Active `prompt_building_blocks` row for `image_gen_platform_system` (scoped wins over global).
- * 2. Else `IMAGE_GENERATION_SYSTEM_PROMPT` env (trimmed).
- * 3. Else empty string (user-only prompt).
+ * 2. Else empty string (user-only prompt). Seed via migration `015_seed_platform_image_system_block.sql` or Admin → prompt blocks.
  */
 export async function getPlatformImageSystemPreamble(productTypeId = null) {
-  const envFallback = process.env.IMAGE_GENERATION_SYSTEM_PROMPT?.trim() || '';
-
   try {
     const resolved = await resolvePromptBlocks({
       productTypeId: productTypeId || null,
@@ -31,7 +28,7 @@ export async function getPlatformImageSystemPreamble(productTypeId = null) {
     console.warn('[platformImagePrompt] resolvePromptBlocks:', err?.message || err);
   }
 
-  return envFallback;
+  return '';
 }
 
 /**

@@ -73,6 +73,7 @@ export function startImageGenerationWorker() {
         return asset;
       } catch (err) {
         const message = err?.message || 'Generation failed';
+        console.error('[image-generation worker] job failed:', jobId, message);
         await updateGenerationJob(jobId, {
           status: 'failed',
           error_message: message,

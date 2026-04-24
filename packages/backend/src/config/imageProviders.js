@@ -28,7 +28,7 @@ export function assertValidCredentialProvider(provider) {
  * **`external_http`** (custom gateway) or extend credentials + adapters in a follow-up migration.
  */
 export const SUGGESTED_IMAGE_MODELS = {
-  openai: ['dall-e-3', 'dall-e-2', 'gpt-image-1'],
+  openai: ['dall-e-3', 'dall-e-2', 'gpt-image-1', 'gpt-image-1.5', 'gpt-image-1-mini'],
   google: ['imagen-4.0-generate-001', 'imagen-4.0-fast-generate-001', 'imagen-4.0-ultra-generate-001'],
   grok: ['grok-imagine-image'],
 };

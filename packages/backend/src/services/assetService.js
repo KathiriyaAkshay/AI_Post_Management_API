@@ -1,5 +1,63 @@
 import { supabaseAdmin } from '../config/supabase.js';
 
+const DATA_URL_RE = /^data:/i;
+
+/** List reads must not select `metadata` JSONB — old rows can hold multi‑MB base64; that I/O dominated latency before Node could strip it. */
+const GENERATED_IMAGE_LIST_SELECT = [
+  'id',
+  'user_id',
+  'campaign_id',
+  'name',
+  'is_liked',
+  'prompt_used',
+  'image_url',
+  'file_size',
+  'format',
+  'width',
+  'height',
+  'color_space',
+  'product_reference_input_url',
+  'product_reference_resolved_url',
+  'brand_logo_url',
+  'created_at',
+].join(', ');
+
+const CUSTOMER_ASSET_LIST_EMBED = `${GENERATED_IMAGE_LIST_SELECT}, campaigns(id, name, is_prebuilt)`;
+const ADMIN_ASSET_LIST_EMBED = `${GENERATED_IMAGE_LIST_SELECT}, campaigns(id, name)`;
+
+/**
+ * Strips `data:` (inline) image payloads from `metadata` for API and realtime JSON.
+ * Use `image_url` on the row for the public image link; we never return multi‑MB blobs in fields.
+ * @param {object|null|undefined} metadata
+ * @returns {object}
+ */
+export function stripInlineImageDataFromMetadata(metadata) {
+  if (metadata == null) return {};
+  if (typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return {};
+  }
+  const out = { ...metadata };
+  for (const key of Object.keys(out)) {
+    const v = out[key];
+    if (typeof v === 'string' && v.length > 0 && DATA_URL_RE.test(v.trim())) {
+      delete out[key];
+    }
+  }
+  return out;
+}
+
+/**
+ * @param {object|undefined} row
+ */
+function assetForPublicResponse(row) {
+  if (!row || typeof row !== 'object') return row;
+  const raw = row.metadata;
+  return {
+    ...row,
+    metadata: stripInlineImageDataFromMetadata(raw !== undefined && raw !== null ? raw : {}),
+  };
+}
+
 /**
  * Save a generated image record to the database.
  */
@@ -14,6 +72,9 @@ export async function saveGeneratedImage({
   colorSpace,
   metadata,
   name = null,
+  productReferenceInputUrl = null,
+  productReferenceResolvedUrl = null,
+  brandLogoUrl = null,
 }) {
   const { data, error } = await supabaseAdmin
     .from('generated_images')
@@ -28,12 +89,15 @@ export async function saveGeneratedImage({
       color_space: colorSpace || 'sRGB',
       metadata: metadata || {},
       name: name || null,
+      product_reference_input_url: productReferenceInputUrl || null,
+      product_reference_resolved_url: productReferenceResolvedUrl || null,
+      brand_logo_url: brandLogoUrl || null,
     })
     .select()
     .single();
 
   if (error) throw error;
-  return data;
+  return assetForPublicResponse(data);
 }
 
 /**
@@ -44,7 +108,7 @@ export async function getAssets({ userId, page = 1, limit = 20, search = '' } = 
 
   let query = supabaseAdmin
     .from('generated_images')
-    .select('*, campaigns(id, name, is_prebuilt)', { count: 'exact' })
+    .select(CUSTOMER_ASSET_LIST_EMBED, { count: 'exact' })
     .eq('user_id', userId)
     .range(offset, offset + limit - 1)
     .order('created_at', { ascending: false });
@@ -59,8 +123,9 @@ export async function getAssets({ userId, page = 1, limit = 20, search = '' } = 
   const { data, error, count } = await query;
   if (error) throw error;
 
+  const rows = (data || []).map((row) => assetForPublicResponse(row));
   return {
-    data,
+    data: rows,
     meta: {
       total: count,
       page: Number(page),
@@ -83,7 +148,7 @@ export async function getAssetById(id, userId) {
 
   if (error) throw error;
   if (!data) throw new Error('Asset not found');
-  return data;
+  return assetForPublicResponse(data);
 }
 
 /**
@@ -127,7 +192,9 @@ export async function getDashboardStats(userId) {
   // Last 4 recent images
   const { data: recentImages } = await supabaseAdmin
     .from('generated_images')
-    .select('id, image_url, prompt_used, name, is_liked, created_at')
+    .select(
+      'id, image_url, prompt_used, product_reference_input_url, product_reference_resolved_url, brand_logo_url, name, is_liked, created_at'
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(4);
@@ -173,7 +240,7 @@ export async function getAllAssets({ page = 1, limit = 20, search = '', userId =
 
   let query = supabaseAdmin
     .from('generated_images')
-    .select('*, campaigns(id, name)', { count: 'exact' })
+    .select(ADMIN_ASSET_LIST_EMBED, { count: 'exact' })
     .range(offset, offset + limit - 1)
     .order('created_at', { ascending: false });
 
@@ -188,8 +255,9 @@ export async function getAllAssets({ page = 1, limit = 20, search = '', userId =
   const { data, error, count } = await query;
   if (error) throw error;
 
+  const rows = (data || []).map((row) => assetForPublicResponse(row));
   return {
-    data,
+    data: rows,
     meta: {
       total: count,
       page: Number(page),
@@ -221,5 +289,5 @@ export async function updateAsset(id, userId, { name, isLiked } = {}) {
 
   if (error) throw error;
   if (!data) throw new Error('Asset not found');
-  return data;
+  return assetForPublicResponse(data);
 }

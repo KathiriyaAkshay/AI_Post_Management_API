@@ -24,7 +24,7 @@ export async function startServer() {
           const sockets = await io.in(room).fetchSockets();
           if (sockets.length === 0) {
             console.warn(
-              `[generationEvents] ${event} → ${room}: no connected Socket.io clients (connect before POST /generate, or poll GET /api/customer/generation-jobs/:jobId)`
+              `[generationEvents] ${event} → ${room}: no Socket.io clients (poll GET /api/customer/generation-jobs/:jobId if needed). Payload still emitted to empty room.`
             );
           }
         } catch (err) {

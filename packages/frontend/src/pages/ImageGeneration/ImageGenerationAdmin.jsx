@@ -84,12 +84,9 @@ export default function ImageGenerationAdmin() {
   useEffect(() => {
     if (!settings) return;
     const pm = settings.provider_models || {};
-    modelsForm.setFieldsValue({
-      openai: pm.openai ?? '',
-      google: pm.google ?? '',
-      grok: pm.grok ?? '',
-    });
-  }, [settings, modelsForm]);
+    const fields = Object.fromEntries(credentialProviders.map((p) => [p, pm[p] ?? '']));
+    modelsForm.setFieldsValue(fields);
+  }, [settings, modelsForm, credentialProviders]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: () => putImageGenerationSettings({ active_provider: effectiveActive }),
@@ -132,10 +129,29 @@ export default function ImageGenerationAdmin() {
 
   const credByProvider = Object.fromEntries(credentialRows.map((r) => [r.provider, r]));
 
+  const credentialTableRows = credentialProviders.map((provider) => {
+    const row = credByProvider[provider];
+    return { provider, ...row };
+  });
+
+  const providerModels = settings?.provider_models || {};
+
   const columns = [
     { title: 'Provider', dataIndex: 'provider', key: 'provider', render: (p) => <Tag color="blue">{p}</Tag> },
+    {
+      title: 'Model ID',
+      key: 'model',
+      render: (_, record) => {
+        const m = providerModels[record.provider];
+        return m ? (
+          <Text code>{m}</Text>
+        ) : (
+          <Text type="secondary">Not set in admin (runtime uses env / adapter default)</Text>
+        );
+      },
+    },
     { title: 'Label', dataIndex: 'label', key: 'label', render: (l) => l || '—' },
-    { title: 'Key version', dataIndex: 'key_version', key: 'kv' },
+    { title: 'Key version', dataIndex: 'key_version', key: 'kv', render: (v) => v ?? '—' },
     { title: 'Updated', dataIndex: 'updated_at', key: 'u', render: (t) => (t ? new Date(t).toLocaleString() : '—') },
   ];
 
@@ -195,13 +211,12 @@ export default function ImageGenerationAdmin() {
         <Form
           form={modelsForm}
           layout="vertical"
-          onFinish={(values) =>
-            saveModelsMutation.mutate({
-              openai: values.openai ?? '',
-              google: values.google ?? '',
-              grok: values.grok ?? '',
-            })
-          }
+          onFinish={(values) => {
+            const provider_models = Object.fromEntries(
+              credentialProviders.map((p) => [p, values[p] ?? ''])
+            );
+            saveModelsMutation.mutate(provider_models);
+          }}
         >
           {credentialProviders.map((p) => {
             const hints = suggestedModels[p];
@@ -227,14 +242,14 @@ export default function ImageGenerationAdmin() {
         </Form>
       </Card>
 
-      <Card title="Provider API keys (encrypted at rest)" loading={credLoading}>
+      <Card title="Provider API keys (encrypted at rest)" loading={credLoading || settingsLoading}>
         <Table
           size="small"
           rowKey="provider"
-          dataSource={credentialRows}
+          dataSource={credentialTableRows}
           columns={columns}
           pagination={false}
-          locale={{ emptyText: 'No keys stored yet' }}
+          locale={{ emptyText: 'No credential providers configured' }}
         />
         <Divider />
         {credentialProviders.map((provider) => (

@@ -146,9 +146,10 @@ export async function cloneCampaignHandler(req, res) {
 
 /**
  * POST /api/customer/generate
- * Body: campaignId?, basePrompt?, name?, visualStyle?, aspectRatio?, mood?,
- *       modelEnabled?, genderFocus? — all optional except you typically send
- *       basePrompt and/or campaignId for meaningful output.
+ * Body: campaignId?, basePrompt?, productReferenceUrl?, name?, visualStyle?, aspectRatio?, mood?,
+ *       modelEnabled?, genderFocus? — all optional; with campaignId, campaign
+ *       description is merged into the scene prompt when basePrompt is absent or combined when both are set.
+ *       productReferenceUrl: per-user product image; required for prebuilt campaigns to attach a reference (template URL is ignored).
  */
 export async function generateImageHandler(req, res) {
   try {
@@ -219,9 +220,17 @@ export async function getGenerationJobHandler(req, res) {
    Assets
    ───────────────────────────────────────────── */
 
+function parseListPagination(query) {
+  const page = Math.max(1, parseInt(String(query.page ?? '1'), 10) || 1);
+  const raw = parseInt(String(query.limit ?? '20'), 10);
+  const limit = Math.min(100, Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : 20));
+  const search = String(query.search ?? '').trim();
+  return { page, limit, search };
+}
+
 export async function listAssetsHandler(req, res) {
   try {
-    const { page, limit, search } = req.query;
+    const { page, limit, search } = parseListPagination(req.query);
     const result = await getAssets({ userId: req.user.id, page, limit, search });
     res.json({ success: true, ...result });
   } catch (err) {

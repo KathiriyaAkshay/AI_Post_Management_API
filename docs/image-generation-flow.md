@@ -16,7 +16,7 @@ All customer image generations use a **shared platform preamble** prepended to t
 |--------|---------|
 | **`prompt_building_blocks`** | Global row `block_key = image_gen_platform_system`, `category = system`, `product_type_id` NULL (seeded in migration `015_seed_platform_image_system_block.sql`). Editable in **Admin → Prompt blocks**. |
 | **Scoped override** | Same `block_key` with a non-null `product_type_id` wins when the campaign has `product_type_id` (uses existing `resolvePromptBlocks` merge). |
-| **`IMAGE_GENERATION_SYSTEM_PROMPT`** | Env fallback if the DB row is missing or empty (e.g. fresh dev DB). |
+| *(none)* | If no active matching row exists, no preamble is prepended until migration `015` is applied or an admin creates the block. |
 
 The string stored on **`generated_images.prompt_used`** is the **full** prompt sent to the provider (preamble + user-facing `buildPrompt()` output). See Swagger **Customer API → Generate an image** for the ordered assembly list.
 

@@ -13,7 +13,7 @@ This document is the **single entry point** for how the platform is meant to wor
 
 ## 1. What this product is
 
-**AI Post Management** is a platform for **campaign-driven AI image generation**: configurable campaigns (style, mood, aspect ratio, optional product type prompt parts, custom sections), **admin-managed** templates and options, and **customer-facing** generation and asset storage backed by **Supabase** (Postgres + Auth).
+**AI Post Management** is a platform for **campaign-driven AI image generation**: configurable campaigns (style, mood, aspect ratio, optional **custom sections**, short **`basePrompt`**). **Admin-managed** templates and campaign options; **customer-facing** generation and assets in **Supabase** (Postgres + Auth).
 
 **In this monorepo:**
 
@@ -81,9 +81,9 @@ After login (`/login`), the sidebar drives primary work:
 |--------|--------|---------|
 | `/dashboard` | Dashboard | Overview / stats for the admin experience. |
 | `/clients` | Clients | Manage **customer** accounts (create/edit); link to per-customer **prompts**. |
-| `/clients/:customerId/prompts` | (via Clients) | **Prompt management** for a customer’s product types / prompt content. |
+| `/clients/:customerId/prompts` | (via Clients) | **Prompt management** for a customer (admin tooling). |
 | `/campaigns` | Prebuilt Campaigns | CRUD **platform prebuilt** campaigns (`is_prebuilt`), used as templates customers can clone. |
-| `/campaign-options` | Campaign Options | Admin configuration of **campaign option groups** (e.g. styles, moods) resolved per product type. |
+| `/campaign-options` | Campaign Options | Admin configuration of **campaign option groups** (e.g. styles, moods) for the builder. |
 | `/image-generation` | Image generation | **DB-driven image backend**: active provider, **encrypted** provider API keys, **per-provider model IDs** (`provider_models`). |
 
 **Swagger:** admin JWT → tag **Image Generation (Admin)** and other admin tags at **`/api-docs`**.
@@ -97,7 +97,7 @@ Customers authenticate with Supabase; the app sends **`Authorization: Bearer <ac
 Typical sequence:
 
 1. **Profile / dashboard** — `GET /api/customer/profile`, `GET /api/customer/dashboard`.
-2. **Browse options** — `GET /api/customer/campaign-options?product_type_id=…` for UI dropdowns.
+2. **Browse options** — `GET /api/customer/campaign-options` for UI dropdowns.
 3. **Campaigns** — list/read/create/update/delete **own** campaigns; read **prebuilt** templates; **clone** prebuilt to own workspace (`POST /api/customer/campaigns/:id/clone`).
 4. **Generate image** — `POST /api/customer/generate` with body fields such as `campaignId`, `basePrompt`, `aspectRatio`, `name`, etc. (see Swagger **Customer API → Generate an image**).
 5. **Assets** — `GET /api/customer/assets`, `GET /api/customer/assets/:id`, patch name/like.
@@ -165,5 +165,6 @@ Root **`npm run dev`** may start **both** backend and admin; use workspace scrip
 | Document | Content |
 |----------|---------|
 | [README.md](../README.md) | Monorepo layout, quick start, scripts. |
+| [E2E_CAMPAIGN_TO_IMAGE.md](./E2E_CAMPAIGN_TO_IMAGE.md) | QA: campaign-options → campaign → generate; scenario CSV. |
 | [image-generation-flow.md](./image-generation-flow.md) | Image UX, prompt order, async + Socket + poll. |
 | [adr/README.md](./adr/README.md) | Index of architecture decision records. |
