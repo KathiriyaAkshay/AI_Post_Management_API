@@ -8,6 +8,7 @@ export async function createCustomerHandler(req, res) {
       username,
       business_name,
       logo,
+      logo_position,
       contact_number,
       address,
     } = req.body;
@@ -18,6 +19,7 @@ export async function createCustomerHandler(req, res) {
       username,
       businessName: business_name,
       logo,
+      logoPosition: logo_position,
       contactNumber: contact_number,
       address,
     });

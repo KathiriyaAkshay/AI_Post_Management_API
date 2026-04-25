@@ -13,13 +13,24 @@ import { optimizePromptBestEffort } from './promptOptimizationService.js';
 async function getProfileBrandingForGeneration(userId) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('business_name, logo')
+    .select('business_name, logo, logo_position')
     .eq('id', userId)
     .maybeSingle();
-  if (error || !data) return { brandName: null, logoUrl: null };
+  if (error || !data) return { brandName: null, logoUrl: null, logoPosition: 'auto' };
   const brandName = typeof data.business_name === 'string' && data.business_name.trim() ? data.business_name.trim() : null;
   const logoUrl = typeof data.logo === 'string' && data.logo.trim() ? data.logo.trim() : null;
-  return { brandName, logoUrl };
+  const allowedPositions = new Set([
+    'auto',
+    'top_left',
+    'top_right',
+    'top_center',
+    'bottom_left',
+    'bottom_right',
+    'bottom_center',
+    'center',
+  ]);
+  const logoPosition = allowedPositions.has(data.logo_position) ? data.logo_position : 'auto';
+  return { brandName, logoUrl, logoPosition };
 }
 
 /**
@@ -102,7 +113,7 @@ export async function executeCustomerImageGeneration(userId, body) {
       : '';
   const effectiveBasePrompt = [campaignDescription, bodyBase].filter(Boolean).join('\n\n');
 
-  const { brandName, logoUrl } = await getProfileBrandingForGeneration(userId);
+  const { brandName, logoUrl, logoPosition } = await getProfileBrandingForGeneration(userId);
 
   const userFacingPrompt = buildPrompt({
     basePrompt: effectiveBasePrompt,
@@ -114,6 +125,7 @@ export async function executeCustomerImageGeneration(userId, body) {
     customSections,
     brandName,
     logoUrl,
+    logoPosition,
     productReferenceUrl,
   });
   console.log('[generation] prompt:userFacing:built', {
@@ -121,6 +133,7 @@ export async function executeCustomerImageGeneration(userId, body) {
     length: userFacingPrompt.length,
     hasProductReference: Boolean(productReferenceUrl),
     hasLogoReference: Boolean(logoUrl),
+    logoPosition,
   });
 
   const platformPreamble = await getPlatformImageSystemPreamble(productTypeIdForPlatform);
@@ -162,6 +175,7 @@ export async function executeCustomerImageGeneration(userId, body) {
     modelEnabled: finalModelEnabled,
     genderFocus: finalGenderFocus,
     logoUrl: logoUrl || undefined,
+    logoPosition: logoPosition || undefined,
     productReferenceUrl: productReferenceUrl || undefined,
   });
   console.log('[generation] provider:result', {
@@ -212,6 +226,7 @@ export async function executeCustomerImageGeneration(userId, body) {
         latencyMs: promptOptimization.latencyMs,
         ...(promptOptimization.errorMessage ? { errorMessage: promptOptimization.errorMessage } : {}),
       },
+      logoPositionUsed: logoPosition,
       ...(storagePath ? { storagePath, mirroredToSupabase: true } : {}),
       // Keep only https provider URLs in DB; never store data: blobs (they mirror to `image_url` anyway).
       ...(persistedImageUrl !== result.imageUrl && result.imageUrl

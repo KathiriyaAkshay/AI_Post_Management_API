@@ -12,6 +12,7 @@ export async function generateWithExternalHttp({
   modelEnabled,
   genderFocus,
   logoUrl,
+  logoPosition,
   productReferenceUrl,
   generationMode,
   extra = {},
@@ -41,6 +42,7 @@ export async function generateWithExternalHttp({
         model_enabled: modelEnabled,
         gender_focus: genderFocus,
         ...(typeof logoUrl === 'string' && logoUrl.trim() ? { logo_url: logoUrl.trim() } : {}),
+        ...(typeof logoPosition === 'string' && logoPosition.trim() ? { logo_position: logoPosition.trim() } : {}),
         ...(typeof productReferenceUrl === 'string' && productReferenceUrl.trim()
           ? { product_reference_url: productReferenceUrl.trim() }
           : {}),

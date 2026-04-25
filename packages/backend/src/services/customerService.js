@@ -11,6 +11,7 @@ export async function createCustomer({
   username,
   businessName,
   logo,
+  logoPosition,
   contactNumber,
   address,
 }) {
@@ -62,6 +63,7 @@ export async function createCustomer({
       username,
       business_name: businessName,
       logo,
+      logo_position: logoPosition || 'auto',
       contact_number: contactNumber,
       address,
       role: 'customer',
@@ -162,6 +164,7 @@ export async function updateCustomer(id, updates) {
     'username',
     'business_name',
     'logo',
+    'logo_position',
     'contact_number',
     'address',
   ];

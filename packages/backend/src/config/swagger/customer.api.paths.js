@@ -63,6 +63,20 @@ export const customerApiPaths = {
             username: { type: 'string' },
             business_name: { type: 'string' },
             logo: { type: 'string', format: 'uri' },
+            logo_position: {
+              type: 'string',
+              enum: [
+                'auto',
+                'top_left',
+                'top_right',
+                'top_center',
+                'bottom_left',
+                'bottom_right',
+                'bottom_center',
+                'center',
+              ],
+              description: 'Preferred logo placement during generation',
+            },
             contact_number: { type: 'string' },
             address: { type: 'string' },
           },
@@ -291,7 +305,7 @@ Active \`prompt_building_blocks\` with \`block_key = image_gen_platform_system\`
 3. \`visualStyle\` and \`mood\`
 4. Model/gender modifier if enabled
 5. Custom sections sorted by \`prompt_weight\` (high → medium → low)
-6. Profile \`business_name\` / \`logo\` (when set). **Product reference URL:** optional body \`productReferenceUrl\` always wins when set. For **customer-owned** campaigns, if omitted, the row's \`product_reference_url\` is used. For **platform prebuilt** campaigns, the template's \`product_reference_url\` is **not** reused (one shared row per template)—send \`productReferenceUrl\` per generation so each user can supply their own product shot. Branding / product hints go into the text prompt; \`logo_url\` and \`product_reference_url\` are also sent on the legacy external HTTP gateway when set. OpenAI DALL-E 3 is text-only.
+6. Profile \`business_name\` / \`logo\` / \`logo_position\` (when set). **Product reference URL:** optional body \`productReferenceUrl\` always wins when set. For **customer-owned** campaigns, if omitted, the row's \`product_reference_url\` is used. For **platform prebuilt** campaigns, the template's \`product_reference_url\` is **not** reused (one shared row per template)—send \`productReferenceUrl\` per generation so each user can supply their own product shot. Branding / product hints go into the text prompt; \`logo_url\`, \`logo_position\`, and \`product_reference_url\` are also sent on the legacy external HTTP gateway when set. OpenAI DALL-E 3 is text-only.
 
 If \`campaignId\` is supplied, campaign settings are used as defaults and any per-field overrides in the request body take precedence.
 

@@ -10,6 +10,7 @@
  * @property {boolean} [modelEnabled]
  * @property {string} [genderFocus]
  * @property {string} [logoUrl]
+ * @property {string} [logoPosition]
  * @property {string} [productReferenceUrl]
  * @property {GenerationMode} [generationMode] — set by {@link attachGenerationMode} before routing
  * @property {string} [apiKey] — injected by runtime for credential providers

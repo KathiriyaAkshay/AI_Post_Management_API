@@ -54,6 +54,7 @@ export async function generateImage(params) {
  * @param {Array}    params.customSections - User-defined sections: [{ title, description, prompt_weight }]
  * @param {string|null} [params.brandName] - profiles.business_name (optional)
  * @param {string|null} [params.logoUrl] - profiles.logo URL (text + external_http only; DALL-E 3 does not ingest images)
+ * @param {string|null} [params.logoPosition] - profiles.logo_position preference
  * @param {string|null} [params.productReferenceUrl] - Resolved per request (body or own campaign row; prebuilt templates excluded)
  * @returns {string}
  */
@@ -67,6 +68,7 @@ export function buildPrompt({
   customSections = [],
   brandName = null,
   logoUrl = null,
+  logoPosition = null,
   productReferenceUrl = null,
 }) {
   const parts = [];
@@ -92,6 +94,7 @@ export function buildPrompt({
 
   const bn = typeof brandName === 'string' ? brandName.trim() : '';
   const logo = typeof logoUrl === 'string' ? logoUrl.trim() : '';
+  const logoPos = typeof logoPosition === 'string' ? logoPosition.trim() : '';
   const pref = typeof productReferenceUrl === 'string' ? productReferenceUrl.trim() : '';
 
   if (bn) {
@@ -111,6 +114,20 @@ export function buildPrompt({
     parts.push(
       'The supplied reference image is the official brand logo — place it clearly in the composition and preserve its design faithfully; do not invent a different logotype or replace it with styled text of the business name.'
     );
+  }
+
+  if (logo && logoPos && logoPos !== 'auto') {
+    const labelMap = {
+      top_left: 'top-left',
+      top_right: 'top-right',
+      top_center: 'top-center',
+      bottom_left: 'bottom-left',
+      bottom_right: 'bottom-right',
+      bottom_center: 'bottom-center',
+      center: 'center',
+    };
+    const posLabel = labelMap[logoPos] || logoPos.replace(/_/g, '-');
+    parts.push(`Place the official logo near the ${posLabel} area of the composition unless it clearly harms visual balance.`);
   }
 
   if (pref) {

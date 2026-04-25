@@ -15,6 +15,21 @@ export const createCustomerValidator = [
     .isLength({ min: 1, max: 255 })
     .withMessage('Business name is required (max 255 characters)'),
   body('logo').optional().isURL().withMessage('Logo must be a valid URL'),
+  body('logo_position')
+    .optional()
+    .isIn([
+      'auto',
+      'top_left',
+      'top_right',
+      'top_center',
+      'bottom_left',
+      'bottom_right',
+      'bottom_center',
+      'center',
+    ])
+    .withMessage(
+      'Logo position must be one of: auto, top_left, top_right, top_center, bottom_left, bottom_right, bottom_center, center'
+    ),
   body('contact_number')
     .optional()
     .trim()

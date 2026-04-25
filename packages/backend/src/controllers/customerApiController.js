@@ -27,7 +27,7 @@ export async function getProfileHandler(req, res) {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, full_name, username, business_name, logo, contact_number, address, role, created_at')
+      .select('id, email, full_name, username, business_name, logo, logo_position, contact_number, address, role, created_at')
       .eq('id', req.user.id)
       .single();
 
@@ -40,7 +40,7 @@ export async function getProfileHandler(req, res) {
 
 export async function updateProfileHandler(req, res) {
   try {
-    const allowed = ['full_name', 'username', 'business_name', 'logo', 'contact_number', 'address'];
+    const allowed = ['full_name', 'username', 'business_name', 'logo', 'logo_position', 'contact_number', 'address'];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -154,6 +154,7 @@ export async function cloneCampaignHandler(req, res) {
 export async function generateImageHandler(req, res) {
   try {
     if (isAsyncImageGenerationEnabled()) {
+      console.log('ASYNC IMAGE GENERATION ENABLED');
       const job = await insertGenerationJob(req.user.id, req.body);
       try {
         await enqueueImageGeneration({ jobId: job.id, userId: req.user.id, body: req.body });
