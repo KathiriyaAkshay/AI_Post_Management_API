@@ -1,3 +1,4 @@
+import { createProviderHttpError, createProviderNetworkError } from './providerError.js';
 /**
  * xAI Grok image generation (OpenAI-compatible images endpoint).
  * @see https://docs.x.ai/docs/guides/image-generation
@@ -46,25 +47,36 @@ export async function generateWithGrok({ prompt, aspectRatio = '1:1', apiKey, mo
   const base = xaiBaseUrl();
   const resolution = process.env.GROK_IMAGE_RESOLUTION?.trim() || '1k';
 
-  const response = await fetch(`${base}/images/generations`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey.trim()}`,
-    },
-    body: JSON.stringify({
-      model,
-      prompt,
-      n: 1,
-      response_format: 'url',
-      aspect_ratio: grokAspectRatio(aspectRatio),
-      resolution,
-    }),
-  });
+  let response;
+  try {
+    response = await fetch(`${base}/images/generations`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        response_format: 'url',
+        aspect_ratio: grokAspectRatio(aspectRatio),
+        resolution,
+      }),
+    });
+  } catch (err) {
+    throw createProviderNetworkError({ provider: 'grok', operation: 'image generation', cause: err });
+  }
 
   const errText = await response.text();
   if (!response.ok) {
-    throw new Error(`Grok image generation failed: ${response.status} ${errText.slice(0, 2000)}`);
+    throw createProviderHttpError({
+      provider: 'grok',
+      operation: 'image generation',
+      status: response.status,
+      body: errText,
+      retryAfterHeader: response.headers.get('retry-after'),
+    });
   }
 
   let json;

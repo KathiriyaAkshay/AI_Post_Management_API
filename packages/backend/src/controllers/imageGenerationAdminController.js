@@ -7,7 +7,13 @@ import {
   upsertImageProviderCredential,
   deleteImageProviderCredential,
 } from '../services/imageProviderCredentialsService.js';
-import { IMAGE_PROVIDER_IDS, CREDENTIAL_PROVIDER_IDS, SUGGESTED_IMAGE_MODELS } from '../config/imageProviders.js';
+import {
+  IMAGE_PROVIDER_IDS,
+  CREDENTIAL_PROVIDER_IDS,
+  SUGGESTED_IMAGE_MODELS,
+  PROMPT_OPTIMIZER_PROVIDER_IDS,
+  SUGGESTED_PROMPT_OPTIMIZER_MODELS,
+} from '../config/imageProviders.js';
 
 export async function getImageGenerationSettingsHandler(req, res) {
   try {
@@ -22,9 +28,13 @@ export async function putImageGenerationSettingsHandler(req, res) {
   try {
     const active = req.body?.active_provider ?? req.body?.activeProvider;
     const models = req.body?.provider_models ?? req.body?.providerModels;
+    const promptOptimizer = req.body?.prompt_optimizer ?? req.body?.promptOptimizer;
+    const generationRetry = req.body?.generation_retry ?? req.body?.generationRetry;
     const data = await updateImageGenerationSettings({
       active_provider: typeof active === 'string' ? active.trim() : undefined,
       provider_models: models,
+      prompt_optimizer: promptOptimizer,
+      generation_retry: generationRetry,
     });
     res.json({ success: true, data });
   } catch (err) {
@@ -91,6 +101,8 @@ export function listImageProviderIdsHandler(req, res) {
       active_provider_options: IMAGE_PROVIDER_IDS,
       credential_providers: CREDENTIAL_PROVIDER_IDS,
       suggested_image_models: SUGGESTED_IMAGE_MODELS,
+        prompt_optimizer_providers: PROMPT_OPTIMIZER_PROVIDER_IDS,
+        suggested_prompt_optimizer_models: SUGGESTED_PROMPT_OPTIMIZER_MODELS,
     },
   });
 }

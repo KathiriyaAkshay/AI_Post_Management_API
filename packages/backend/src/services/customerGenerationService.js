@@ -8,6 +8,7 @@ import {
   getPlatformImageSystemPreamble,
   mergePlatformAndUserPrompt,
 } from './platformImagePromptService.js';
+import { optimizePromptBestEffort } from './promptOptimizationService.js';
 
 async function getProfileBrandingForGeneration(userId) {
   const { data, error } = await supabaseAdmin
@@ -30,6 +31,11 @@ async function getProfileBrandingForGeneration(userId) {
  * @returns {Promise<object>} generated_images row (snake_case)
  */
 export async function executeCustomerImageGeneration(userId, body) {
+  console.log('[generation] executeCustomerImageGeneration:start', {
+    userId,
+    campaignId: body?.campaignId || null,
+    hasBasePrompt: Boolean(typeof body?.basePrompt === 'string' && body.basePrompt.trim()),
+  });
   const {
     campaignId,
     basePrompt = '',
@@ -110,9 +116,43 @@ export async function executeCustomerImageGeneration(userId, body) {
     logoUrl,
     productReferenceUrl,
   });
+  console.log('[generation] prompt:userFacing:built', {
+    userId,
+    length: userFacingPrompt.length,
+    hasProductReference: Boolean(productReferenceUrl),
+    hasLogoReference: Boolean(logoUrl),
+  });
 
   const platformPreamble = await getPlatformImageSystemPreamble(productTypeIdForPlatform);
-  const finalPrompt = mergePlatformAndUserPrompt(platformPreamble, userFacingPrompt);
+  const mergedPrompt = mergePlatformAndUserPrompt(platformPreamble, userFacingPrompt);
+  console.log('[generation] prompt:merged', {
+    userId,
+    length: mergedPrompt.length,
+    hasPlatformPreamble: Boolean(platformPreamble),
+  });
+  const promptOptimization = await optimizePromptBestEffort({
+    prompt: mergedPrompt,
+    context: {
+      userId,
+      campaignId: resolvedCampaignId,
+      providerHints: {
+        visualStyle: finalVisualStyle,
+        aspectRatio: finalAspectRatio,
+      },
+    },
+  });
+  const finalPrompt = promptOptimization.optimizedPrompt;
+  console.log('[generation] prompt:optimized', {
+    userId,
+    usedOptimizer: promptOptimization.usedOptimizer,
+    fallbackUsed: promptOptimization.fallbackUsed,
+    provider: promptOptimization.provider,
+    model: promptOptimization.model,
+    originalLength: promptOptimization.originalPrompt.length,
+    finalLength: finalPrompt.length,
+    latencyMs: promptOptimization.latencyMs,
+    errorMessage: promptOptimization.errorMessage || null,
+  });
 
   const result = await generateImage({
     prompt: finalPrompt,
@@ -124,11 +164,31 @@ export async function executeCustomerImageGeneration(userId, body) {
     logoUrl: logoUrl || undefined,
     productReferenceUrl: productReferenceUrl || undefined,
   });
+  console.log('[generation] provider:result', {
+    userId,
+    provider: result?.metadata?.provider || null,
+    model: result?.metadata?.model || null,
+    generationMode: result?.metadata?.generationMode || null,
+    width: result?.width || null,
+    height: result?.height || null,
+    format: result?.format || null,
+  });
 
   const { publicUrl: persistedImageUrl, storagePath } = await mirrorGeneratedImageToSupabase(
     userId,
     result.imageUrl
   );
+  console.log('[generation] storage:mirrored', {
+    userId,
+    hasStoragePath: Boolean(storagePath),
+    persistedUrlHost: (() => {
+      try {
+        return new URL(persistedImageUrl).host;
+      } catch {
+        return null;
+      }
+    })(),
+  });
 
   const asset = await saveGeneratedImage({
     userId,
@@ -142,6 +202,16 @@ export async function executeCustomerImageGeneration(userId, body) {
     metadata: {
       generatedAt: new Date().toISOString(),
       ...(result.metadata && typeof result.metadata === 'object' ? result.metadata : {}),
+      promptOptimization: {
+        originalPrompt: promptOptimization.originalPrompt,
+        optimizedPrompt: promptOptimization.optimizedPrompt,
+        usedOptimizer: promptOptimization.usedOptimizer,
+        fallbackUsed: promptOptimization.fallbackUsed,
+        provider: promptOptimization.provider,
+        model: promptOptimization.model,
+        latencyMs: promptOptimization.latencyMs,
+        ...(promptOptimization.errorMessage ? { errorMessage: promptOptimization.errorMessage } : {}),
+      },
       ...(storagePath ? { storagePath, mirroredToSupabase: true } : {}),
       // Keep only https provider URLs in DB; never store data: blobs (they mirror to `image_url` anyway).
       ...(persistedImageUrl !== result.imageUrl && result.imageUrl
@@ -153,6 +223,11 @@ export async function executeCustomerImageGeneration(userId, body) {
     productReferenceInputUrl: bodyProductRef,
     productReferenceResolvedUrl: productReferenceUrl,
     brandLogoUrl: logoUrl,
+  });
+  console.log('[generation] executeCustomerImageGeneration:completed', {
+    userId,
+    assetId: asset?.id || null,
+    campaignId: resolvedCampaignId,
   });
 
   return asset;

@@ -14,6 +14,7 @@
 import { generateWithExternalHttp } from './imageProviders/externalHttpAdapter.js';
 import { generateWithResolvedProvider } from './imageProviderRuntime.js';
 import { attachGenerationMode } from './generationContext.js';
+import { runImageGenerationWithRetry } from './generationRetryService.js';
 
 /**
  * Legacy gateway: env-based, takes precedence over DB `active_provider` when enabled.
@@ -30,9 +31,9 @@ export function shouldUseExternalImageGeneration() {
 export async function generateImage(params) {
   attachGenerationMode(params);
   if (shouldUseExternalImageGeneration()) {
-    return generateWithExternalHttp(params);
+    return runImageGenerationWithRetry(() => generateWithExternalHttp(params));
   }
-  return generateWithResolvedProvider(params);
+  return runImageGenerationWithRetry(() => generateWithResolvedProvider(params));
 }
 
 /**

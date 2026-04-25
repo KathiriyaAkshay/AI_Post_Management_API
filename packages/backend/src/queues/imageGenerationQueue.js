@@ -4,6 +4,7 @@ import { bullmqPrefix, isAsyncImageGenerationEnabled } from '../config/generatio
 import { executeCustomerImageGeneration } from '../services/customerGenerationService.js';
 import { updateGenerationJob } from '../services/generationJobService.js';
 import { emitGenerationCompleted, emitGenerationFailed } from '../realtime/generationEvents.js';
+import { getGenerationRetrySettingsCached } from '../services/imageGenerationSettingsService.js';
 
 const QUEUE_NAME = 'image-generation';
 
@@ -40,6 +41,7 @@ export function getImageGenerationQueue() {
 export async function enqueueImageGeneration({ jobId, userId, body }) {
   const q = getImageGenerationQueue();
   if (!q) throw new Error('Async image generation is not enabled');
+  const retryCfg = await getGenerationRetrySettingsCached();
   await q.add(
     'generate',
     { jobId, userId, body },
@@ -47,6 +49,13 @@ export async function enqueueImageGeneration({ jobId, userId, body }) {
       jobId,
       removeOnComplete: 500,
       removeOnFail: 1000,
+      attempts: retryCfg?.enabled ? Math.max(1, Number(retryCfg.queue_attempts || 1)) : 1,
+      backoff: retryCfg?.enabled
+        ? {
+          type: 'exponential',
+          delay: Math.max(100, Number(retryCfg.queue_backoff_ms || 1000)),
+        }
+        : undefined,
     }
   );
 }
@@ -73,7 +82,22 @@ export function startImageGenerationWorker() {
         return asset;
       } catch (err) {
         const message = err?.message || 'Generation failed';
-        console.error('[image-generation worker] job failed:', jobId, message);
+        const maxAttempts = Number(job?.opts?.attempts || 1);
+        const attemptsMade = Number(job?.attemptsMade || 0) + 1;
+        const retriesLeft = Math.max(0, maxAttempts - attemptsMade);
+        console.error('[image-generation worker] job failed:', jobId, {
+          message,
+          attemptsMade,
+          maxAttempts,
+          retriesLeft,
+        });
+        if (retriesLeft > 0) {
+          await updateGenerationJob(jobId, {
+            status: 'processing',
+            error_message: `Retrying (${attemptsMade}/${maxAttempts}): ${message}`,
+          });
+          throw err;
+        }
         await updateGenerationJob(jobId, {
           status: 'failed',
           error_message: message,

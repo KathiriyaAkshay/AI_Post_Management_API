@@ -32,3 +32,11 @@ export const SUGGESTED_IMAGE_MODELS = {
   google: ['imagen-4.0-generate-001', 'imagen-4.0-fast-generate-001', 'imagen-4.0-ultra-generate-001'],
   grok: ['grok-imagine-image'],
 };
+
+/** Prompt optimizer providers (text-to-text before image generation). */
+export const PROMPT_OPTIMIZER_PROVIDER_IDS = ['openai'];
+
+/** UI hints for optimizer text models; not server-side enforced. */
+export const SUGGESTED_PROMPT_OPTIMIZER_MODELS = {
+  openai: ['gpt-5.4-nano', 'gpt-5.4-mini', 'gpt-5.4'],
+};

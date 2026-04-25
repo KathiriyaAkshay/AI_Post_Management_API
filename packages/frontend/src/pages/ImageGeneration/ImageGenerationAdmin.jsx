@@ -1,5 +1,21 @@
 import { useState, useEffect } from 'react';
-import { Card, Typography, Select, Button, Space, Form, Input, Table, Tag, message, Alert, Divider, Popconfirm } from 'antd';
+import {
+  Card,
+  Typography,
+  Select,
+  Button,
+  Space,
+  Form,
+  Input,
+  InputNumber,
+  Table,
+  Tag,
+  message,
+  Alert,
+  Divider,
+  Popconfirm,
+  Switch,
+} from 'antd';
 import { SaveOutlined, DeleteOutlined, ApiOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -57,6 +73,8 @@ export default function ImageGenerationAdmin() {
   const queryClient = useQueryClient();
   const [activeProvider, setActiveProvider] = useState(null);
   const [modelsForm] = Form.useForm();
+  const [optimizerForm] = Form.useForm();
+  const [retryForm] = Form.useForm();
 
   const { data: providerIdsRes, isLoading: idsLoading } = useQuery({
     queryKey: ['image-gen', 'providers'],
@@ -78,6 +96,8 @@ export default function ImageGenerationAdmin() {
   const activeOptions = providerIdsRes?.data?.active_provider_options || [];
   const credentialProviders = providerIdsRes?.data?.credential_providers || ['openai', 'google', 'grok'];
   const suggestedModels = providerIdsRes?.data?.suggested_image_models || {};
+  const optimizerProviders = providerIdsRes?.data?.prompt_optimizer_providers || ['openai'];
+  const suggestedOptimizerModels = providerIdsRes?.data?.suggested_prompt_optimizer_models || {};
 
   const effectiveActive = activeProvider ?? settings?.active_provider ?? 'mock';
 
@@ -86,7 +106,9 @@ export default function ImageGenerationAdmin() {
     const pm = settings.provider_models || {};
     const fields = Object.fromEntries(credentialProviders.map((p) => [p, pm[p] ?? '']));
     modelsForm.setFieldsValue(fields);
-  }, [settings, modelsForm, credentialProviders]);
+    optimizerForm.setFieldsValue(settings.prompt_optimizer || {});
+    retryForm.setFieldsValue(settings.generation_retry || {});
+  }, [settings, modelsForm, optimizerForm, retryForm, credentialProviders]);
 
   const saveSettingsMutation = useMutation({
     mutationFn: () => putImageGenerationSettings({ active_provider: effectiveActive }),
@@ -106,6 +128,26 @@ export default function ImageGenerationAdmin() {
       queryClient.invalidateQueries(['image-gen', 'settings']);
     },
     onError: (err) => message.error(err.response?.data?.error || 'Save models failed'),
+  });
+
+  const saveOptimizerMutation = useMutation({
+    mutationFn: (prompt_optimizer) => putImageGenerationSettings({ prompt_optimizer }),
+    onSuccess: (res) => {
+      message.success('Prompt optimizer settings updated');
+      queryClient.setQueryData(['image-gen', 'settings'], res);
+      queryClient.invalidateQueries(['image-gen', 'settings']);
+    },
+    onError: (err) => message.error(err.response?.data?.error || 'Save optimizer settings failed'),
+  });
+
+  const saveRetryMutation = useMutation({
+    mutationFn: (generation_retry) => putImageGenerationSettings({ generation_retry }),
+    onSuccess: (res) => {
+      message.success('Retry settings updated');
+      queryClient.setQueryData(['image-gen', 'settings'], res);
+      queryClient.invalidateQueries(['image-gen', 'settings']);
+    },
+    onError: (err) => message.error(err.response?.data?.error || 'Save retry settings failed'),
   });
 
   const saveKeyMutation = useMutation({
@@ -238,6 +280,118 @@ export default function ImageGenerationAdmin() {
           })}
           <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saveModelsMutation.isPending}>
             Save model IDs
+          </Button>
+        </Form>
+      </Card>
+
+      <Card
+        title="Prompt optimizer (text-to-text before image generation)"
+        loading={settingsLoading || idsLoading}
+        style={{ marginBottom: 16 }}
+      >
+        <Form
+          form={optimizerForm}
+          layout="vertical"
+          onFinish={(values) => saveOptimizerMutation.mutate(values)}
+          initialValues={settings?.prompt_optimizer || {}}
+        >
+          <Space wrap size="large" style={{ width: '100%' }}>
+            <Form.Item name="enabled" label="Enabled" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <Form.Item name="policy" label="Failure policy" rules={[{ required: true }]}>
+              <Select
+                style={{ minWidth: 180 }}
+                options={[
+                  { value: 'best_effort', label: 'best_effort (fail-open)' },
+                  { value: 'required', label: 'required (fail-closed)' },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="provider" label="Provider" rules={[{ required: true }]}>
+              <Select
+                style={{ minWidth: 180 }}
+                options={optimizerProviders.map((v) => ({ value: v, label: v }))}
+              />
+            </Form.Item>
+          </Space>
+          <Form.Item name="model" label="Optimizer model" rules={[{ required: true }]}>
+            <Input placeholder="e.g. gpt-5.4-nano" autoComplete="off" />
+          </Form.Item>
+          <Form.Item
+            name="system_template"
+            label="Optimizer system template"
+            rules={[{ required: true, message: 'Provide optimizer system template' }]}
+          >
+            <Input.TextArea
+              rows={5}
+              placeholder="System instruction used by prompt optimizer"
+              autoComplete="off"
+            />
+          </Form.Item>
+          <Paragraph type="secondary" style={{ marginTop: -8 }}>
+            Suggestions:{' '}
+            {(suggestedOptimizerModels[optimizerForm.getFieldValue('provider')] || suggestedOptimizerModels.openai || []).map((m) => (
+              <Text code key={m} style={{ marginRight: 8 }}>
+                {m}
+              </Text>
+            ))}
+          </Paragraph>
+          <Space wrap>
+            <Form.Item name="timeout_ms" label="Timeout (ms)" rules={[{ required: true }]}>
+              <InputNumber min={300} max={15000} />
+            </Form.Item>
+            <Form.Item name="max_tokens" label="Max tokens" rules={[{ required: true }]}>
+              <InputNumber min={100} max={4000} />
+            </Form.Item>
+            <Form.Item name="temperature" label="Temperature" rules={[{ required: true }]}>
+              <InputNumber min={0} max={1} step={0.1} />
+            </Form.Item>
+          </Space>
+          <div>
+            <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saveOptimizerMutation.isPending}>
+              Save prompt optimizer
+            </Button>
+          </div>
+        </Form>
+      </Card>
+
+      <Card title="Image generation retry policy" loading={settingsLoading} style={{ marginBottom: 16 }}>
+        <Form
+          form={retryForm}
+          layout="vertical"
+          onFinish={(values) => saveRetryMutation.mutate(values)}
+          initialValues={settings?.generation_retry || {}}
+        >
+          <Space wrap size="large" style={{ width: '100%' }}>
+            <Form.Item name="enabled" label="Retry enabled" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <Form.Item name="max_attempts" label="Provider retry attempts" rules={[{ required: true }]}>
+              <InputNumber min={1} max={10} />
+            </Form.Item>
+            <Form.Item name="base_delay_ms" label="Base delay (ms)" rules={[{ required: true }]}>
+              <InputNumber min={100} max={60000} />
+            </Form.Item>
+            <Form.Item name="max_delay_ms" label="Max delay (ms)" rules={[{ required: true }]}>
+              <InputNumber min={500} max={120000} />
+            </Form.Item>
+            <Form.Item name="queue_attempts" label="Queue attempts" rules={[{ required: true }]}>
+              <InputNumber min={1} max={10} />
+            </Form.Item>
+            <Form.Item name="queue_backoff_ms" label="Queue backoff (ms)" rules={[{ required: true }]}>
+              <InputNumber min={500} max={120000} />
+            </Form.Item>
+          </Space>
+          <Form.Item
+            name="retry_on_statuses"
+            label="Retry HTTP statuses"
+            tooltip="Transient status codes that should be retried"
+          >
+            <Select mode="tags" tokenSeparators={[',']} placeholder="429,500,502,503,504" />
+          </Form.Item>
+          <Button type="primary" htmlType="submit" icon={<SaveOutlined />} loading={saveRetryMutation.isPending}>
+            Save retry policy
           </Button>
         </Form>
       </Card>

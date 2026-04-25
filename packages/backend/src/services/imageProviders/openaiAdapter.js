@@ -1,3 +1,4 @@
+import { createProviderHttpError, createProviderNetworkError } from './providerError.js';
 /**
  * OpenAI Images API (direct). Requires decrypted API key from DB.
  *
@@ -113,18 +114,29 @@ async function openaiImagesEditJson({ prompt, aspectRatio = '1:1', apiKey, model
     ...(canUseHighFidelity ? { input_fidelity: 'high' } : {}),
   };
 
-  const response = await fetch('https://api.openai.com/v1/images/edits', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/images/edits', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    throw createProviderNetworkError({ provider: 'openai', operation: 'image edits', cause: err });
+  }
 
   const errText = await response.text();
   if (!response.ok) {
-    throw new Error(`OpenAI image edits failed: ${response.status} ${errText.slice(0, 2000)}`);
+    throw createProviderHttpError({
+      provider: 'openai',
+      operation: 'image edits',
+      status: response.status,
+      body: errText,
+      retryAfterHeader: response.headers.get('retry-after'),
+    });
   }
 
   let json;
@@ -216,24 +228,35 @@ export async function generateWithOpenAI({
 
   const size = openaiSizeFromAspectRatio(aspectRatio, model);
 
-  const response = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      prompt,
-      n: 1,
-      size,
-      response_format: 'url',
-    }),
-  });
+  let response;
+  try {
+    response = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        prompt,
+        n: 1,
+        size,
+        response_format: 'url',
+      }),
+    });
+  } catch (err) {
+    throw createProviderNetworkError({ provider: 'openai', operation: 'image generation', cause: err });
+  }
 
   const errText = await response.text();
   if (!response.ok) {
-    throw new Error(`OpenAI image generation failed: ${response.status} ${errText}`);
+    throw createProviderHttpError({
+      provider: 'openai',
+      operation: 'image generation',
+      status: response.status,
+      body: errText,
+      retryAfterHeader: response.headers.get('retry-after'),
+    });
   }
 
   let json;

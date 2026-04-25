@@ -1,3 +1,4 @@
+import { createProviderHttpError, createProviderNetworkError } from './providerError.js';
 /**
  * Google Imagen via Gemini API (API key from AI Studio / Google AI).
  * @see https://ai.google.dev/gemini-api/docs/imagen
@@ -125,24 +126,35 @@ export async function generateWithGoogle({
       },
     }))
     console.log("=================")
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey.trim(),
-      },
-      body: JSON.stringify({
-        contents: [{ parts }],
-        generationConfig: {
-          responseModalities: ['TEXT', 'IMAGE'],
-          imageConfig: { aspectRatio: ar },
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
         },
-      }),
-    });
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE'],
+            imageConfig: { aspectRatio: ar },
+          },
+        }),
+      });
+    } catch (err) {
+      throw createProviderNetworkError({ provider: 'google', operation: 'gemini image generateContent', cause: err });
+    }
 
     const errText = await response.text();
     if (!response.ok) {
-      throw new Error(`Google Gemini image failed: ${response.status} ${errText.slice(0, 2000)}`);
+      throw createProviderHttpError({
+        provider: 'google',
+        operation: 'gemini image generateContent',
+        status: response.status,
+        body: errText,
+        retryAfterHeader: response.headers.get('retry-after'),
+      });
     }
 
     let json;
@@ -169,25 +181,36 @@ export async function generateWithGoogle({
     format = String(mime).includes('jpeg') ? 'JPEG' : 'PNG';
   } else {
     const url = `${IMAGEN_ENDPOINT}/${encodeURIComponent(model)}:predict`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': apiKey.trim(),
-      },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: ar,
-          personGeneration: process.env.GOOGLE_IMAGEN_PERSON_GENERATION?.trim() || 'allow_adult',
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey.trim(),
         },
-      }),
-    });
+        body: JSON.stringify({
+          instances: [{ prompt }],
+          parameters: {
+            sampleCount: 1,
+            aspectRatio: ar,
+            personGeneration: process.env.GOOGLE_IMAGEN_PERSON_GENERATION?.trim() || 'allow_adult',
+          },
+        }),
+      });
+    } catch (err) {
+      throw createProviderNetworkError({ provider: 'google', operation: 'imagen predict', cause: err });
+    }
 
     const errText = await response.text();
     if (!response.ok) {
-      throw new Error(`Google Imagen failed: ${response.status} ${errText.slice(0, 2000)}`);
+      throw createProviderHttpError({
+        provider: 'google',
+        operation: 'imagen predict',
+        status: response.status,
+        body: errText,
+        retryAfterHeader: response.headers.get('retry-after'),
+      });
     }
 
     let json;
