@@ -24,6 +24,18 @@ export const schemas = {
     },
   },
 
+  BusinessLocation: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', example: 'loc_main_1' },
+      label: { type: 'string', nullable: true, example: 'Main showroom' },
+      address: { type: 'string', nullable: true, example: '123 Market Road, Ahmedabad' },
+      contact_number: { type: 'string', nullable: true, example: '+91 98765 43210' },
+      include_by_default: { type: 'boolean', default: false },
+      is_active: { type: 'boolean', default: true },
+    },
+  },
+
   // ─── Profile ────────────────────────────────────
   Profile: {
     type: 'object',
@@ -47,6 +59,11 @@ export const schemas = {
           'center',
         ],
         default: 'auto',
+      },
+      business_locations: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/BusinessLocation' },
+        description: 'Profile-level business locations used as generation context.',
       },
       contact_number: { type: 'string', nullable: true },
       address: { type: 'string', nullable: true },

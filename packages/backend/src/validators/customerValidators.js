@@ -30,6 +30,23 @@ export const createCustomerValidator = [
     .withMessage(
       'Logo position must be one of: auto, top_left, top_right, top_center, bottom_left, bottom_right, bottom_center, center'
     ),
+  body('business_locations').optional().isArray().withMessage('business_locations must be an array'),
+  body('business_locations.*.id').optional().isString().withMessage('Location id must be a string'),
+  body('business_locations.*.label').optional().isString().isLength({ max: 120 }).withMessage('Location label max 120 characters'),
+  body('business_locations.*.address').optional().isString().isLength({ max: 500 }).withMessage('Location address max 500 characters'),
+  body('business_locations.*.contact_number')
+    .optional()
+    .isString()
+    .matches(/^[\d\s\-\+\(\)]+$/)
+    .withMessage('Location contact number must be a valid phone number'),
+  body('business_locations.*.include_by_default')
+    .optional()
+    .isBoolean()
+    .withMessage('Location include_by_default must be boolean'),
+  body('business_locations.*.is_active')
+    .optional()
+    .isBoolean()
+    .withMessage('Location is_active must be boolean'),
   body('contact_number')
     .optional()
     .trim()

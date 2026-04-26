@@ -12,6 +12,7 @@ export async function createCustomer({
   businessName,
   logo,
   logoPosition,
+  businessLocations,
   contactNumber,
   address,
 }) {
@@ -64,6 +65,7 @@ export async function createCustomer({
       business_name: businessName,
       logo,
       logo_position: logoPosition || 'auto',
+      business_locations: Array.isArray(businessLocations) ? businessLocations : [],
       contact_number: contactNumber,
       address,
       role: 'customer',
@@ -165,6 +167,7 @@ export async function updateCustomer(id, updates) {
     'business_name',
     'logo',
     'logo_position',
+    'business_locations',
     'contact_number',
     'address',
   ];
@@ -174,6 +177,10 @@ export async function updateCustomer(id, updates) {
       allowedUpdates[field] = updates[field];
     }
   });
+
+  if (allowedUpdates.business_locations !== undefined && !Array.isArray(allowedUpdates.business_locations)) {
+    throw new Error('business_locations must be an array');
+  }
 
   const { data, error } = await supabaseAdmin
     .from('profiles')

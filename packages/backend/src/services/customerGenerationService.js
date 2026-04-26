@@ -10,13 +10,81 @@ import {
 } from './platformImagePromptService.js';
 import { optimizePromptBestEffort } from './promptOptimizationService.js';
 
+function normalizeBusinessLocations(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((loc) => {
+      if (!loc || typeof loc !== 'object' || Array.isArray(loc)) return null;
+      const id = typeof loc.id === 'string' && loc.id.trim() ? loc.id.trim() : null;
+      const label = typeof loc.label === 'string' && loc.label.trim() ? loc.label.trim() : null;
+      const address = typeof loc.address === 'string' && loc.address.trim() ? loc.address.trim() : null;
+      const contact_number =
+        typeof loc.contact_number === 'string' && loc.contact_number.trim() ? loc.contact_number.trim() : null;
+      const include_by_default = loc.include_by_default === true;
+      const is_active = loc.is_active !== false;
+      if (!label && !address && !contact_number) return null;
+      return {
+        id: id || crypto.randomUUID(),
+        ...(label ? { label } : {}),
+        ...(address ? { address } : {}),
+        ...(contact_number ? { contact_number } : {}),
+        include_by_default,
+        is_active,
+      };
+    })
+    .filter(Boolean);
+}
+
+function resolveGenerationLocations({ profileLocations, selectedLocationIds, includeDefaultLocations, legacyAddress, legacyContact }) {
+  const active = profileLocations.filter((loc) => loc.is_active !== false);
+  const selectedIds = Array.isArray(selectedLocationIds)
+    ? selectedLocationIds
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter(Boolean)
+    : [];
+
+  if (selectedIds.length > 0) {
+    const byId = new Set(selectedIds);
+    const chosen = active.filter((loc) => byId.has(loc.id));
+    if (chosen.length > 0) return chosen;
+  }
+
+  if (includeDefaultLocations !== false) {
+    const defaults = active.filter((loc) => loc.include_by_default === true);
+    if (defaults.length > 0) return defaults;
+  }
+
+  if (active.length > 0) return [active[0]];
+
+  const address = typeof legacyAddress === 'string' && legacyAddress.trim() ? legacyAddress.trim() : null;
+  const contact_number = typeof legacyContact === 'string' && legacyContact.trim() ? legacyContact.trim() : null;
+  if (!address && !contact_number) return [];
+  return [{
+    id: 'legacy-profile-location',
+    label: 'Main location',
+    ...(address ? { address } : {}),
+    ...(contact_number ? { contact_number } : {}),
+    include_by_default: true,
+    is_active: true,
+  }];
+}
+
 async function getProfileBrandingForGeneration(userId) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('business_name, logo, logo_position')
+    .select('business_name, logo, logo_position, business_locations, contact_number, address')
     .eq('id', userId)
     .maybeSingle();
-  if (error || !data) return { brandName: null, logoUrl: null, logoPosition: 'auto' };
+  if (error || !data) {
+    return {
+      brandName: null,
+      logoUrl: null,
+      logoPosition: 'auto',
+      businessLocations: [],
+      legacyAddress: null,
+      legacyContact: null,
+    };
+  }
   const brandName = typeof data.business_name === 'string' && data.business_name.trim() ? data.business_name.trim() : null;
   const logoUrl = typeof data.logo === 'string' && data.logo.trim() ? data.logo.trim() : null;
   const allowedPositions = new Set([
@@ -30,7 +98,16 @@ async function getProfileBrandingForGeneration(userId) {
     'center',
   ]);
   const logoPosition = allowedPositions.has(data.logo_position) ? data.logo_position : 'auto';
-  return { brandName, logoUrl, logoPosition };
+  const legacyAddress = typeof data.address === 'string' && data.address.trim() ? data.address.trim() : null;
+  const legacyContact = typeof data.contact_number === 'string' && data.contact_number.trim() ? data.contact_number.trim() : null;
+  return {
+    brandName,
+    logoUrl,
+    logoPosition,
+    businessLocations: normalizeBusinessLocations(data.business_locations),
+    legacyAddress,
+    legacyContact,
+  };
 }
 
 /**
@@ -57,6 +134,8 @@ export async function executeCustomerImageGeneration(userId, body) {
     modelEnabled,
     genderFocus,
     productReferenceUrl: productReferenceUrlFromBody,
+    selectedLocationIds,
+    includeDefaultLocations = true,
   } = body;
 
   const bodyProductRef =
@@ -113,7 +192,21 @@ export async function executeCustomerImageGeneration(userId, body) {
       : '';
   const effectiveBasePrompt = [campaignDescription, bodyBase].filter(Boolean).join('\n\n');
 
-  const { brandName, logoUrl, logoPosition } = await getProfileBrandingForGeneration(userId);
+  const {
+    brandName,
+    logoUrl,
+    logoPosition,
+    businessLocations: profileLocations,
+    legacyAddress,
+    legacyContact,
+  } = await getProfileBrandingForGeneration(userId);
+  const resolvedLocations = resolveGenerationLocations({
+    profileLocations,
+    selectedLocationIds,
+    includeDefaultLocations,
+    legacyAddress,
+    legacyContact,
+  });
 
   const userFacingPrompt = buildPrompt({
     basePrompt: effectiveBasePrompt,
@@ -126,6 +219,7 @@ export async function executeCustomerImageGeneration(userId, body) {
     brandName,
     logoUrl,
     logoPosition,
+    businessLocations: resolvedLocations,
     productReferenceUrl,
   });
   console.log('[generation] prompt:userFacing:built', {
@@ -134,6 +228,7 @@ export async function executeCustomerImageGeneration(userId, body) {
     hasProductReference: Boolean(productReferenceUrl),
     hasLogoReference: Boolean(logoUrl),
     logoPosition,
+    selectedLocationsCount: resolvedLocations.length,
   });
 
   const platformPreamble = await getPlatformImageSystemPreamble(productTypeIdForPlatform);
@@ -176,6 +271,9 @@ export async function executeCustomerImageGeneration(userId, body) {
     genderFocus: finalGenderFocus,
     logoUrl: logoUrl || undefined,
     logoPosition: logoPosition || undefined,
+    extra: {
+      business_locations: resolvedLocations,
+    },
     productReferenceUrl: productReferenceUrl || undefined,
   });
   console.log('[generation] provider:result', {
@@ -227,6 +325,11 @@ export async function executeCustomerImageGeneration(userId, body) {
         ...(promptOptimization.errorMessage ? { errorMessage: promptOptimization.errorMessage } : {}),
       },
       logoPositionUsed: logoPosition,
+      locationSelection: {
+        selectedLocationIds: Array.isArray(selectedLocationIds) ? selectedLocationIds : [],
+        includeDefaultLocations: includeDefaultLocations !== false,
+        locationsUsed: resolvedLocations,
+      },
       ...(storagePath ? { storagePath, mirroredToSupabase: true } : {}),
       // Keep only https provider URLs in DB; never store data: blobs (they mirror to `image_url` anyway).
       ...(persistedImageUrl !== result.imageUrl && result.imageUrl

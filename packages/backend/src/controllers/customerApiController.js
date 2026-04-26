@@ -27,7 +27,7 @@ export async function getProfileHandler(req, res) {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, full_name, username, business_name, logo, logo_position, contact_number, address, role, created_at')
+      .select('id, email, full_name, username, business_name, logo, logo_position, business_locations, contact_number, address, role, created_at')
       .eq('id', req.user.id)
       .single();
 
@@ -40,10 +40,23 @@ export async function getProfileHandler(req, res) {
 
 export async function updateProfileHandler(req, res) {
   try {
-    const allowed = ['full_name', 'username', 'business_name', 'logo', 'logo_position', 'contact_number', 'address'];
+    const allowed = [
+      'full_name',
+      'username',
+      'business_name',
+      'logo',
+      'logo_position',
+      'business_locations',
+      'contact_number',
+      'address',
+    ];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
+    if (updates.business_locations !== undefined && !Array.isArray(updates.business_locations)) {
+      return res.status(400).json({ success: false, error: 'business_locations must be an array' });
     }
 
     if (Object.keys(updates).length === 0) {

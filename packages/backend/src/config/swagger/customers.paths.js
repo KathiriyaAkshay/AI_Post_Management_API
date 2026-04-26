@@ -65,6 +65,10 @@ export const customersPaths = {
               ],
               example: 'bottom_right',
             },
+            business_locations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/BusinessLocation' },
+            },
             contact_number: { type: 'string', example: '+1-555-123-4567' },
             address: { type: 'string', example: '123 Main St, City, State 12345' },
           },
@@ -120,6 +124,10 @@ export const customersPaths = {
                 'bottom_center',
                 'center',
               ],
+            },
+            business_locations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/BusinessLocation' },
             },
             contact_number: { type: 'string' },
             address: { type: 'string' },

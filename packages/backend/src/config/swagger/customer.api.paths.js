@@ -77,6 +77,10 @@ export const customerApiPaths = {
               ],
               description: 'Preferred logo placement during generation',
             },
+            business_locations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/BusinessLocation' },
+            },
             contact_number: { type: 'string' },
             address: { type: 'string' },
           },
@@ -305,7 +309,7 @@ Active \`prompt_building_blocks\` with \`block_key = image_gen_platform_system\`
 3. \`visualStyle\` and \`mood\`
 4. Model/gender modifier if enabled
 5. Custom sections sorted by \`prompt_weight\` (high → medium → low)
-6. Profile \`business_name\` / \`logo\` / \`logo_position\` (when set). **Product reference URL:** optional body \`productReferenceUrl\` always wins when set. For **customer-owned** campaigns, if omitted, the row's \`product_reference_url\` is used. For **platform prebuilt** campaigns, the template's \`product_reference_url\` is **not** reused (one shared row per template)—send \`productReferenceUrl\` per generation so each user can supply their own product shot. Branding / product hints go into the text prompt; \`logo_url\`, \`logo_position\`, and \`product_reference_url\` are also sent on the legacy external HTTP gateway when set. OpenAI DALL-E 3 is text-only.
+6. Profile \`business_name\` / \`logo\` / \`logo_position\` / \`business_locations\` (when set). **Product reference URL:** optional body \`productReferenceUrl\` always wins when set. For **customer-owned** campaigns, if omitted, the row's \`product_reference_url\` is used. For **platform prebuilt** campaigns, the template's \`product_reference_url\` is **not** reused (one shared row per template)—send \`productReferenceUrl\` per generation so each user can supply their own product shot. Branding / product hints go into the text prompt; \`logo_url\`, \`logo_position\`, and \`product_reference_url\` are also sent on the legacy external HTTP gateway when set. OpenAI DALL-E 3 is text-only.
 
 If \`campaignId\` is supplied, campaign settings are used as defaults and any per-field overrides in the request body take precedence.
 
@@ -344,6 +348,17 @@ If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`*
               format: 'uri',
               description:
                 'Per-request product reference image (HTTPS). Overrides the campaign stored URL when both exist. For prebuilt campaigns, send this each time—the template row URL is not applied so each user can use their own product image.',
+            },
+            selectedLocationIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Optional profile business location ids to include in generation context. If omitted, default-included locations are used.',
+            },
+            includeDefaultLocations: {
+              type: 'boolean',
+              default: true,
+              description: 'When true, includes profile locations marked include_by_default if selectedLocationIds is absent.',
             },
           },
         }}},

@@ -55,6 +55,7 @@ export async function generateImage(params) {
  * @param {string|null} [params.brandName] - profiles.business_name (optional)
  * @param {string|null} [params.logoUrl] - profiles.logo URL (text + external_http only; DALL-E 3 does not ingest images)
  * @param {string|null} [params.logoPosition] - profiles.logo_position preference
+ * @param {Array<{label?: string, address?: string, contact_number?: string}>} [params.businessLocations]
  * @param {string|null} [params.productReferenceUrl] - Resolved per request (body or own campaign row; prebuilt templates excluded)
  * @returns {string}
  */
@@ -69,6 +70,7 @@ export function buildPrompt({
   brandName = null,
   logoUrl = null,
   logoPosition = null,
+  businessLocations = [],
   productReferenceUrl = null,
 }) {
   const parts = [];
@@ -132,6 +134,24 @@ export function buildPrompt({
 
   if (pref) {
     parts.push('Align subject and packaging with the campaign product reference where applicable.');
+  }
+
+  if (Array.isArray(businessLocations) && businessLocations.length > 0) {
+    const locationLines = businessLocations
+      .slice(0, 3)
+      .map((loc) => {
+        const label = typeof loc?.label === 'string' && loc.label.trim() ? loc.label.trim() : null;
+        const address = typeof loc?.address === 'string' && loc.address.trim() ? loc.address.trim() : null;
+        const contact = typeof loc?.contact_number === 'string' && loc.contact_number.trim()
+          ? loc.contact_number.trim()
+          : null;
+        const chunks = [label, address, contact ? `contact ${contact}` : null].filter(Boolean);
+        return chunks.join(' — ');
+      })
+      .filter(Boolean);
+    if (locationLines.length > 0) {
+      parts.push(`Business location details: ${locationLines.join(' | ')}.`);
+    }
   }
 
   return parts.filter(Boolean).join(', ');
