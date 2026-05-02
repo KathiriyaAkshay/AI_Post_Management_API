@@ -31,6 +31,16 @@ const assetResponse = (description) => ({
   }}},
 });
 
+const userDeviceResponse = (description) => ({
+  description,
+  content: { 'application/json': { schema: {
+    type: 'object', properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/UserDevice' },
+    },
+  }}},
+});
+
 export const customerApiPaths = {
   // ─── Profile ──────────────────────────────────────────
   '/api/customer/profile': {
@@ -472,6 +482,96 @@ If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`*
       responses: {
         200: assetResponse('Updated asset'),
         400: { description: 'No valid fields', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+  },
+
+  // ─── Devices ──────────────────────────────────────────
+  '/api/customer/devices': {
+    get: {
+      operationId: 'customerListDevices',
+      summary: 'List my devices',
+      description: 'Returns all device records for the authenticated user.',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: {
+          description: 'Device list',
+          content: { 'application/json': { schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: { type: 'array', items: { $ref: '#/components/schemas/UserDevice' } },
+            },
+          }}},
+        },
+        401: err401, 403: err403,
+      },
+    },
+    post: {
+      operationId: 'customerUpsertDevice',
+      summary: 'Create or update my device by device id',
+      description:
+        'Upserts by `(user_id, device_id)`. If `token` is already attached to another row, that token ownership is reassigned before upsert.',
+      tags: ['Customer API'],
+      security,
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/UserDeviceUpsertInput' } } },
+      },
+      responses: {
+        201: userDeviceResponse('Created or updated device'),
+        400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403,
+      },
+    },
+  },
+
+  '/api/customer/devices/{deviceId}': {
+    parameters: [
+      {
+        in: 'path',
+        name: 'deviceId',
+        required: true,
+        schema: { type: 'string' },
+        description: 'Client-generated stable device identifier',
+      },
+    ],
+    get: {
+      operationId: 'customerGetDevice',
+      summary: 'Get my device by device id',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: userDeviceResponse('Device'),
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+    put: {
+      operationId: 'customerUpdateDevice',
+      summary: 'Update my device by device id',
+      description: 'Updates token/platform/is_active/last_seen_at. Token conflicts are handled via reassignment.',
+      tags: ['Customer API'],
+      security,
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/UserDeviceUpdateInput' } } },
+      },
+      responses: {
+        200: userDeviceResponse('Updated device'),
+        400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+    delete: {
+      operationId: 'customerDeleteDevice',
+      summary: 'Delete my device by device id',
+      description: 'Hard delete for a device record.',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
         401: err401, 403: err403, 404: err404,
       },
     },

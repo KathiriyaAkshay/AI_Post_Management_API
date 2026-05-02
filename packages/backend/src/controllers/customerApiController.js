@@ -18,6 +18,7 @@ import { isAsyncImageGenerationEnabled } from '../config/generationConfig.js';
 import { insertGenerationJob, updateGenerationJob, getGenerationJobForUser } from '../services/generationJobService.js';
 import { enqueueImageGeneration } from '../queues/imageGenerationQueue.js';
 import { executeCustomerImageGeneration } from '../services/customerGenerationService.js';
+import { notifyImageGenerationCompleted } from '../services/pushNotificationService.js';
 
 /* ─────────────────────────────────────────────
    Profile
@@ -188,6 +189,7 @@ export async function generateImageHandler(req, res) {
     }
 
     const asset = await executeCustomerImageGeneration(req.user.id, req.body);
+    void notifyImageGenerationCompleted(req.user.id, { jobId: null, asset });
     return res.status(201).json({ success: true, data: asset });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

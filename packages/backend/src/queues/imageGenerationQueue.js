@@ -5,6 +5,7 @@ import { executeCustomerImageGeneration } from '../services/customerGenerationSe
 import { updateGenerationJob } from '../services/generationJobService.js';
 import { emitGenerationCompleted, emitGenerationFailed } from '../realtime/generationEvents.js';
 import { getGenerationRetrySettingsCached } from '../services/imageGenerationSettingsService.js';
+import { notifyImageGenerationCompleted } from '../services/pushNotificationService.js';
 
 const QUEUE_NAME = 'image-generation';
 
@@ -79,6 +80,7 @@ export function startImageGenerationWorker() {
           error_message: null,
         });
         emitGenerationCompleted(userId, jobId, asset);
+        void notifyImageGenerationCompleted(userId, { jobId, asset });
         return asset;
       } catch (err) {
         const message = err?.message || 'Generation failed';

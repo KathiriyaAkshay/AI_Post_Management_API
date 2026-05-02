@@ -280,6 +280,53 @@ export const schemas = {
     },
   },
 
+  UserDevice: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      user_id: { type: 'string', format: 'uuid' },
+      device_id: { type: 'string', example: 'iphone-15-pro-max' },
+      token: { type: 'string', example: 'fcm-or-apns-token-value' },
+      platform: {
+        type: 'string',
+        enum: ['ios', 'android', 'web'],
+        nullable: true,
+      },
+      is_active: { type: 'boolean', default: true },
+      last_seen_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  UserDeviceUpsertInput: {
+    type: 'object',
+    required: ['device_id', 'token'],
+    properties: {
+      device_id: { type: 'string', example: 'iphone-15-pro-max' },
+      token: { type: 'string', example: 'fcm-or-apns-token-value' },
+      platform: { type: 'string', enum: ['ios', 'android', 'web'], nullable: true },
+      is_active: { type: 'boolean', default: true },
+      last_seen_at: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description: 'Optional ISO datetime; defaults to current time on create/upsert.',
+      },
+    },
+  },
+
+  UserDeviceUpdateInput: {
+    type: 'object',
+    properties: {
+      token: { type: 'string', example: 'new-fcm-or-apns-token-value' },
+      platform: { type: 'string', enum: ['ios', 'android', 'web'], nullable: true },
+      is_active: { type: 'boolean' },
+      last_seen_at: { type: 'string', format: 'date-time', nullable: true },
+    },
+    description: 'Send only fields to update.',
+  },
+
   // ─── Image generation — async + WebSocket (target contract) ───
   // WsEvent* schemas document server→client WebSocket JSON payloads. OpenAPI 3.0
   // does not define WebSocket paths; these are referenced from operation docs.
