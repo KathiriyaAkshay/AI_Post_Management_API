@@ -1,8 +1,9 @@
 import { api } from '../lib/api';
 
 export const authService = {
+  /** Admin panel: requires backend profiles.role === admin */
   login: async (identifier, password) => {
-    const { data } = await api.post('/auth/login', { identifier, password });
+    const { data } = await api.post('/auth/admin/login', { identifier, password });
     return data;
   },
   signup: async (email, password, full_name) => {

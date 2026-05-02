@@ -1,26 +1,45 @@
 /**
  * Image Generation Service
  *
- * Abstraction layer over the external AI image generation API.
- * Swap out the implementation here when plugging in the real provider.
+ * - **Legacy:** `IMAGE_GENERATION_USE_EXTERNAL=true` + URL + key → HTTP gateway (unchanged precedence).
+ * - **Default:** `image_generation_settings.active_provider` drives **mock**, **OpenAI**, **Google (Imagen)**, **Grok (Imagine)**, or **external_http** (env URL). Keys for OpenAI / Google / Grok come from encrypted DB credentials.
  *
  * Interface:
- *   generateImage(params) => Promise<{ imageUrl, width, height, format, promptUsed }>
+ *   generateImage(params) => Promise<{ imageUrl, width, height, format, promptUsed, metadata? }>
+ *
+ * `attachGenerationMode` sets `params.generationMode` (`text` | `reference`) before routing.
+ * OpenAI uses `/v1/images/edits` when `reference` and reference URLs exist; see `openaiAdapter.js`.
  */
 
-/** Single placeholder image URL for mock mode (stored on generated_images.image_url). */
-const MOCK_DUMMY_IMAGE_URL =
-  process.env.IMAGE_GENERATION_MOCK_IMAGE_URL?.trim() ||
-  'https://picsum.photos/seed/nexus-dummy/1024/1024';
-
-const ASPECT_RATIO_DIMENSIONS = {
-  '1:1':  { width: 1024, height: 1024 },
-  '16:9': { width: 1792, height: 1008 },
-  '9:16': { width: 1008, height: 1792 },
-  '4:3':  { width: 1024, height: 768 },
-};
+import { generateWithExternalHttp } from './imageProviders/externalHttpAdapter.js';
+import { generateWithResolvedProvider } from './imageProviderRuntime.js';
+import { attachGenerationMode } from './generationContext.js';
+import { runImageGenerationWithRetry } from './generationRetryService.js';
 
 /**
+ * Legacy gateway: env-based, takes precedence over DB `active_provider` when enabled.
+ */
+export function shouldUseExternalImageGeneration() {
+  const enabled = process.env.IMAGE_GENERATION_USE_EXTERNAL === 'true';
+  const url = process.env.IMAGE_GENERATION_API_URL?.trim();
+  return enabled && Boolean(url);
+}
+
+/**
+ * @returns {Promise<{ imageUrl: string, width: number, height: number, format: string, promptUsed: string }>}
+ */
+export async function generateImage(params) {
+  attachGenerationMode(params);
+  if (shouldUseExternalImageGeneration()) {
+    return runImageGenerationWithRetry(() => generateWithExternalHttp(params));
+  }
+  return runImageGenerationWithRetry(() => generateWithResolvedProvider(params));
+}
+
+/**
+ * Build the **user-facing** prompt string (no platform preamble). Customer generation
+ * prepends the platform system block (`getPlatformImageSystemPreamble` in `platformImagePromptService.js`) before the provider call.
+ *
  * Build the final prompt string from campaign parameters, prompt parts,
  * and user-defined custom sections.
  *
@@ -33,9 +52,27 @@ const ASPECT_RATIO_DIMENSIONS = {
  * @param {string}   params.genderFocus    - 'male' | 'female' | 'neutral'
  * @param {string[]} params.promptParts    - Prompt parts from the product type
  * @param {Array}    params.customSections - User-defined sections: [{ title, description, prompt_weight }]
+ * @param {string|null} [params.brandName] - profiles.business_name (optional)
+ * @param {string|null} [params.logoUrl] - profiles.logo URL (text + external_http only; DALL-E 3 does not ingest images)
+ * @param {string|null} [params.logoPosition] - profiles.logo_position preference
+ * @param {Array<{label?: string, address?: string, contact_number?: string}>} [params.businessLocations]
+ * @param {string|null} [params.productReferenceUrl] - Resolved per request (body or own campaign row; prebuilt templates excluded)
  * @returns {string}
  */
-export function buildPrompt({ basePrompt = '', visualStyle, mood, modelEnabled, genderFocus, promptParts = [], customSections = [] }) {
+export function buildPrompt({
+  basePrompt = '',
+  visualStyle,
+  mood,
+  modelEnabled,
+  genderFocus,
+  promptParts = [],
+  customSections = [],
+  brandName = null,
+  logoUrl = null,
+  logoPosition = null,
+  businessLocations = [],
+  productReferenceUrl = null,
+}) {
   const parts = [];
 
   if (basePrompt) parts.push(basePrompt);
@@ -47,7 +84,6 @@ export function buildPrompt({ basePrompt = '', visualStyle, mood, modelEnabled, 
     parts.push(`featuring a ${genderLabel}`);
   }
 
-  // Inject user-defined custom sections sorted by prompt_weight (high → medium → low)
   const weightOrder = { high: 0, medium: 1, low: 2 };
   const sorted = [...customSections].sort(
     (a, b) => (weightOrder[a.prompt_weight] ?? 1) - (weightOrder[b.prompt_weight] ?? 1)
@@ -58,89 +94,65 @@ export function buildPrompt({ basePrompt = '', visualStyle, mood, modelEnabled, 
     }
   }
 
+  const bn = typeof brandName === 'string' ? brandName.trim() : '';
+  const logo = typeof logoUrl === 'string' ? logoUrl.trim() : '';
+  const logoPos = typeof logoPosition === 'string' ? logoPosition.trim() : '';
+  const pref = typeof productReferenceUrl === 'string' ? productReferenceUrl.trim() : '';
+
+  if (bn) {
+    parts.push(`On-brand for business name: ${bn}.`);
+    if (logo) {
+      parts.push(
+        'Treat the business name as contextual copy only; the definitive brand mark is the supplied logo reference image below — do not substitute plain typography or a fake sign for that artwork.'
+      );
+    }
+  }
+
+  if (logo && pref) {
+    parts.push(
+      'Reference images are ordered: (1) product / packaging inspiration — match subject, props, and styling. (2) official brand logo artwork — composite this logo visibly into the scene (corner, label area, or tasteful overlay), preserving its shapes, colors, and lettering as in the reference; do not redraw it as unrelated text.'
+    );
+  } else if (logo) {
+    parts.push(
+      'The supplied reference image is the official brand logo — place it clearly in the composition and preserve its design faithfully; do not invent a different logotype or replace it with styled text of the business name.'
+    );
+  }
+
+  if (logo && logoPos && logoPos !== 'auto') {
+    const labelMap = {
+      top_left: 'top-left',
+      top_right: 'top-right',
+      top_center: 'top-center',
+      bottom_left: 'bottom-left',
+      bottom_right: 'bottom-right',
+      bottom_center: 'bottom-center',
+      center: 'center',
+    };
+    const posLabel = labelMap[logoPos] || logoPos.replace(/_/g, '-');
+    parts.push(`Place the official logo near the ${posLabel} area of the composition unless it clearly harms visual balance.`);
+  }
+
+  if (pref) {
+    parts.push('Align subject and packaging with the campaign product reference where applicable.');
+  }
+
+  if (Array.isArray(businessLocations) && businessLocations.length > 0) {
+    const locationLines = businessLocations
+      .slice(0, 3)
+      .map((loc) => {
+        const label = typeof loc?.label === 'string' && loc.label.trim() ? loc.label.trim() : null;
+        const address = typeof loc?.address === 'string' && loc.address.trim() ? loc.address.trim() : null;
+        const contact = typeof loc?.contact_number === 'string' && loc.contact_number.trim()
+          ? loc.contact_number.trim()
+          : null;
+        const chunks = [label, address, contact ? `contact ${contact}` : null].filter(Boolean);
+        return chunks.join(' — ');
+      })
+      .filter(Boolean);
+    if (locationLines.length > 0) {
+      parts.push(`Business location details: ${locationLines.join(' | ')}.`);
+    }
+  }
+
   return parts.filter(Boolean).join(', ');
-}
-
-/**
- * External provider is opt-in (see shouldUseExternalImageGeneration). Otherwise mock uses one dummy image.
- */
-export function shouldUseExternalImageGeneration() {
-  const enabled = process.env.IMAGE_GENERATION_USE_EXTERNAL === 'true';
-  const url = process.env.IMAGE_GENERATION_API_URL?.trim();
-  return enabled && Boolean(url);
-}
-
-/**
- * @returns {Promise<{ imageUrl: string, width: number, height: number, format: string, promptUsed: string }>}
- */
-export async function generateImage({ prompt, visualStyle, aspectRatio = '1:1', mood, modelEnabled, genderFocus, extra = {} }) {
-  if (shouldUseExternalImageGeneration()) {
-    return callExternalService({ prompt, visualStyle, aspectRatio, mood, modelEnabled, genderFocus, extra });
-  }
-
-  return mockGenerate({ prompt, aspectRatio });
-}
-
-/**
- * Mock generator — always returns the same dummy image URL; dimensions follow aspect ratio.
- */
-async function mockGenerate({ prompt, aspectRatio }) {
-  await new Promise((r) => setTimeout(r, 300));
-
-  const dimensions = ASPECT_RATIO_DIMENSIONS[aspectRatio] || ASPECT_RATIO_DIMENSIONS['1:1'];
-  const { width, height } = dimensions;
-
-  return {
-    imageUrl: MOCK_DUMMY_IMAGE_URL,
-    width,
-    height,
-    format: 'PNG',
-    promptUsed: prompt,
-  };
-}
-
-/**
- * Real external service call (only when shouldUseExternalImageGeneration() is true).
- * Replace with your provider SDK/API when ready.
- *
- * Env: IMAGE_GENERATION_USE_EXTERNAL=true, IMAGE_GENERATION_API_URL, IMAGE_GENERATION_API_KEY
- */
-async function callExternalService({ prompt, visualStyle, aspectRatio, mood, modelEnabled, genderFocus, extra }) {
-  const apiUrl = process.env.IMAGE_GENERATION_API_URL;
-  const apiKey = process.env.IMAGE_GENERATION_API_KEY;
-
-  const dimensions = ASPECT_RATIO_DIMENSIONS[aspectRatio] || ASPECT_RATIO_DIMENSIONS['1:1'];
-
-  const response = await fetch(`${apiUrl}/generate`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      prompt,
-      style: visualStyle,
-      width: dimensions.width,
-      height: dimensions.height,
-      mood,
-      model_enabled: modelEnabled,
-      gender_focus: genderFocus,
-      ...extra,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Image generation failed: ${response.status} ${errorBody}`);
-  }
-
-  const result = await response.json();
-
-  return {
-    imageUrl: result.image_url || result.url,
-    width: result.width || dimensions.width,
-    height: result.height || dimensions.height,
-    format: result.format || 'PNG',
-    promptUsed: prompt,
-  };
 }

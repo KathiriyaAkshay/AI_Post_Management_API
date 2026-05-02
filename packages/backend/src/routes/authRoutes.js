@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   adminSignupHandler,
+  adminLoginHandler,
   loginHandler,
   forgotPasswordHandler,
   resetPasswordHandler,
@@ -19,6 +20,7 @@ import {
 const router = Router();
 
 router.post('/login', loginValidator, handleValidation, loginHandler);
+router.post('/admin/login', loginValidator, handleValidation, adminLoginHandler);
 router.post('/forgot-password', forgotPasswordValidator, handleValidation, forgotPasswordHandler);
 router.post('/reset-password', resetPasswordValidator, handleValidation, resetPasswordHandler);
 router.post(

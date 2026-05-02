@@ -31,9 +31,20 @@ const authSlice = createSlice({
       const token = localStorage.getItem('token');
       const userStr = localStorage.getItem('user');
       if (token && userStr) {
-        state.token = token;
-        state.user = JSON.parse(userStr);
-        state.isAuthenticated = true;
+        try {
+          const user = JSON.parse(userStr);
+          if (user.role !== 'admin') {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            return;
+          }
+          state.token = token;
+          state.user = user;
+          state.isAuthenticated = true;
+        } catch {
+          localStorage.removeItem('token');
+          localStorage.removeItem('user');
+        }
       }
     },
   },

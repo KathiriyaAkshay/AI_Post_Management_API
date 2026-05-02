@@ -1,5 +1,6 @@
 const err400 = { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } };
 const err401 = { description: 'Unauthorized', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } };
+const err403 = { description: 'Forbidden', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } };
 
 export const authPaths = {
   '/auth/login': {
@@ -31,6 +32,40 @@ export const authPaths = {
         }}}},
         400: err400,
         401: err401,
+      },
+    },
+  },
+
+  '/auth/admin/login': {
+    post: {
+      operationId: 'authAdminLogin',
+      summary: 'Admin panel login',
+      description: 'Same as login, but succeeds only if profiles.role is admin. Customer accounts receive 403 and the session is revoked server-side.',
+      tags: ['Auth'],
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: {
+          type: 'object', required: ['identifier', 'password'],
+          properties: {
+            identifier: { type: 'string', example: 'admin@example.com', description: 'Email or username' },
+            password: { type: 'string', example: 'secret123' },
+          },
+        }}},
+      },
+      responses: {
+        200: { description: 'Login successful', content: { 'application/json': { schema: {
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            data: { type: 'object', properties: {
+              user: { $ref: '#/components/schemas/Profile' },
+              session: { type: 'object', description: 'Supabase session containing access_token' },
+            }},
+          },
+        }}}},
+        400: err400,
+        401: err401,
+        403: err403,
       },
     },
   },

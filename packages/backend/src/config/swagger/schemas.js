@@ -24,6 +24,18 @@ export const schemas = {
     },
   },
 
+  BusinessLocation: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', example: 'loc_main_1' },
+      label: { type: 'string', nullable: true, example: 'Main showroom' },
+      address: { type: 'string', nullable: true, example: '123 Market Road, Ahmedabad' },
+      contact_number: { type: 'string', nullable: true, example: '+91 98765 43210' },
+      include_by_default: { type: 'boolean', default: false },
+      is_active: { type: 'boolean', default: true },
+    },
+  },
+
   // ─── Profile ────────────────────────────────────
   Profile: {
     type: 'object',
@@ -34,6 +46,25 @@ export const schemas = {
       username: { type: 'string', nullable: true },
       business_name: { type: 'string', nullable: true },
       logo: { type: 'string', format: 'uri', nullable: true },
+      logo_position: {
+        type: 'string',
+        enum: [
+          'auto',
+          'top_left',
+          'top_right',
+          'top_center',
+          'bottom_left',
+          'bottom_right',
+          'bottom_center',
+          'center',
+        ],
+        default: 'auto',
+      },
+      business_locations: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/BusinessLocation' },
+        description: 'Profile-level business locations used as generation context.',
+      },
       contact_number: { type: 'string', nullable: true },
       address: { type: 'string', nullable: true },
       role: { type: 'string', enum: ['admin', 'customer'] },
@@ -101,6 +132,29 @@ export const schemas = {
       aspect_ratios: { type: 'array', items: { $ref: '#/components/schemas/CampaignConfigOption' } },
       moods: { type: 'array', items: { $ref: '#/components/schemas/CampaignConfigOption' } },
       gender_focus: { type: 'array', items: { $ref: '#/components/schemas/CampaignConfigOption' } },
+    },
+  },
+
+  PromptBuildingBlock: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      product_type_id: {
+        type: 'string', format: 'uuid', nullable: true,
+        description: 'NULL = global; set = override for that product type (same block_key)',
+      },
+      block_key: { type: 'string', example: 'image_gen_quality_bar', description: 'Stable id: lowercase, numbers, underscores' },
+      category: {
+        type: 'string',
+        enum: ['system', 'style', 'composition', 'brand', 'safety', 'negative', 'other'],
+        example: 'system',
+      },
+      title: { type: 'string', nullable: true },
+      content: { type: 'string', description: 'Prompt fragment text' },
+      is_active: { type: 'boolean', default: true },
+      sort_order: { type: 'integer', default: 0 },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
     },
   },
 
@@ -192,14 +246,231 @@ export const schemas = {
       },
       is_liked: { type: 'boolean', default: false, description: 'User favorite / heart toggle' },
       prompt_used: { type: 'string' },
+      product_reference_input_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Product reference URL from the generate request body (if any).',
+      },
+      product_reference_resolved_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Product reference URL after server resolution (used for this generation).',
+      },
+      brand_logo_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description: 'Profile logo URL at generation time.',
+      },
       image_url: { type: 'string', format: 'uri' },
       file_size: { type: 'integer', nullable: true },
       format: { type: 'string', example: 'PNG' },
       width: { type: 'integer', example: 1024 },
       height: { type: 'integer', example: 1024 },
       color_space: { type: 'string', example: 'sRGB', nullable: true },
-      metadata: { type: 'object', nullable: true },
+      metadata: {
+        type: 'object',
+        nullable: true,
+        description:
+          'Includes `generatedAt`. May include `provider`, `model`, `generationMode`, `openaiRoute`; after mirror to Storage, `storagePath`, `mirroredToSupabase`. `originalProviderImageUrl` may be an ephemeral https URL before copy. API and WebSocket payloads omit any `data:` (inline) image values; use `image_url` for the image.',
+      },
       created_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  UserDevice: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      user_id: { type: 'string', format: 'uuid' },
+      device_id: { type: 'string', example: 'iphone-15-pro-max' },
+      token: { type: 'string', example: 'fcm-or-apns-token-value' },
+      platform: {
+        type: 'string',
+        enum: ['ios', 'android', 'web'],
+        nullable: true,
+      },
+      is_active: { type: 'boolean', default: true },
+      last_seen_at: { type: 'string', format: 'date-time', nullable: true },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  UserDeviceUpsertInput: {
+    type: 'object',
+    required: ['device_id', 'token'],
+    properties: {
+      device_id: { type: 'string', example: 'iphone-15-pro-max' },
+      token: { type: 'string', example: 'fcm-or-apns-token-value' },
+      platform: { type: 'string', enum: ['ios', 'android', 'web'], nullable: true },
+      is_active: { type: 'boolean', default: true },
+      last_seen_at: {
+        type: 'string',
+        format: 'date-time',
+        nullable: true,
+        description: 'Optional ISO datetime; defaults to current time on create/upsert.',
+      },
+    },
+  },
+
+  UserDeviceUpdateInput: {
+    type: 'object',
+    properties: {
+      token: { type: 'string', example: 'new-fcm-or-apns-token-value' },
+      platform: { type: 'string', enum: ['ios', 'android', 'web'], nullable: true },
+      is_active: { type: 'boolean' },
+      last_seen_at: { type: 'string', format: 'date-time', nullable: true },
+    },
+    description: 'Send only fields to update.',
+  },
+
+  // ─── Image generation — async + WebSocket (target contract) ───
+  // WsEvent* schemas document server→client WebSocket JSON payloads. OpenAPI 3.0
+  // does not define WebSocket paths; these are referenced from operation docs.
+
+  GenerationJobAccepted: {
+    type: 'object',
+    description: 'Returned with HTTP 202 when generation is queued for async processing.',
+    properties: {
+      success: { type: 'boolean', example: true },
+      data: {
+        type: 'object',
+        properties: {
+          jobId: { type: 'string', format: 'uuid' },
+          status: { type: 'string', enum: ['pending', 'queued'], example: 'pending' },
+        },
+        required: ['jobId', 'status'],
+      },
+    },
+    required: ['success', 'data'],
+  },
+
+  GenerationJobStatus: {
+    type: 'object',
+    description: 'Async job row + asset when completed (GET poll).',
+    properties: {
+      jobId: { type: 'string', format: 'uuid' },
+      status: { type: 'string', enum: ['pending', 'processing', 'completed', 'failed'] },
+      errorMessage: { type: 'string', nullable: true },
+      createdAt: { type: 'string', format: 'date-time' },
+      updatedAt: { type: 'string', format: 'date-time' },
+      asset: { allOf: [{ $ref: '#/components/schemas/Asset' }], nullable: true, description: 'Present when status is completed and asset exists' },
+    },
+    required: ['jobId', 'status', 'createdAt', 'updatedAt'],
+  },
+
+  WsEventGenerationCompleted: {
+    type: 'object',
+    description: 'WebSocket: event name `generation.completed`. Final asset after DB write.',
+    properties: {
+      jobId: { type: 'string', format: 'uuid' },
+      data: { $ref: '#/components/schemas/Asset' },
+    },
+    required: ['jobId', 'data'],
+  },
+
+  WsEventGenerationFailed: {
+    type: 'object',
+    description: 'WebSocket: event name `generation.failed`.',
+    properties: {
+      jobId: { type: 'string', format: 'uuid' },
+      error: { type: 'string' },
+      code: { type: 'string', nullable: true, description: 'Stable machine-readable code when available' },
+    },
+    required: ['jobId', 'error'],
+  },
+
+  WsEventGenerationProgress: {
+    type: 'object',
+    description: 'WebSocket: optional event name `generation.progress`.',
+    properties: {
+      jobId: { type: 'string', format: 'uuid' },
+      message: { type: 'string' },
+      pct: { type: 'integer', minimum: 0, maximum: 100, nullable: true },
+    },
+    required: ['jobId'],
+  },
+
+  // ─── Image generation — admin settings / encrypted credentials ───
+  ImageProviderIdLists: {
+    type: 'object',
+    properties: {
+      active_provider_options: {
+        type: 'array',
+        items: { type: 'string', enum: ['mock', 'openai', 'google', 'grok', 'external_http'] },
+      },
+      credential_providers: {
+        type: 'array',
+        items: { type: 'string', enum: ['openai', 'google', 'grok'] },
+      },
+      suggested_image_models: {
+        type: 'object',
+        additionalProperties: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+        description: 'Example model ids per credential provider (UI hints; not authoritative)',
+      },
+    },
+  },
+
+  ImageGenerationSettings: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', example: 'default' },
+      active_provider: {
+        type: 'string',
+        enum: ['mock', 'openai', 'google', 'grok', 'external_http'],
+        description: 'Which adapter `generateImage` uses (unless legacy env external is enabled)',
+      },
+      provider_models: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        description: 'Per-credential-provider model id (e.g. openai: dall-e-3). Merged on PATCH; empty string clears a key.',
+        example: { openai: 'dall-e-3', google: '', grok: '' },
+      },
+      updated_at: { type: 'string', format: 'date-time', nullable: true },
+    },
+  },
+
+  ImageGenerationSettingsInput: {
+    type: 'object',
+    description: 'Send at least one of `active_provider` or `provider_models`.',
+    properties: {
+      active_provider: {
+        type: 'string',
+        enum: ['mock', 'openai', 'google', 'grok', 'external_http'],
+      },
+      provider_models: {
+        type: 'object',
+        additionalProperties: { type: 'string' },
+        description: 'Partial map; omitted keys unchanged; empty string removes that provider entry',
+      },
+    },
+  },
+
+  ImageProviderCredentialMeta: {
+    type: 'object',
+    description: 'Stored credential metadata — never includes the API key.',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      provider: { type: 'string', enum: ['openai', 'google', 'grok'] },
+      label: { type: 'string', nullable: true },
+      key_version: { type: 'integer', example: 1 },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+    },
+  },
+
+  ImageProviderCredentialInput: {
+    type: 'object',
+    required: ['api_key'],
+    properties: {
+      api_key: { type: 'string', description: 'Plaintext API key; encrypted server-side before storage' },
+      label: { type: 'string', nullable: true },
     },
   },
 };

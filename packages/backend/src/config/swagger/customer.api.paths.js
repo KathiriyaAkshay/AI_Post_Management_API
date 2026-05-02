@@ -31,6 +31,16 @@ const assetResponse = (description) => ({
   }}},
 });
 
+const userDeviceResponse = (description) => ({
+  description,
+  content: { 'application/json': { schema: {
+    type: 'object', properties: {
+      success: { type: 'boolean', example: true },
+      data: { $ref: '#/components/schemas/UserDevice' },
+    },
+  }}},
+});
+
 export const customerApiPaths = {
   // ─── Profile ──────────────────────────────────────────
   '/api/customer/profile': {
@@ -63,6 +73,24 @@ export const customerApiPaths = {
             username: { type: 'string' },
             business_name: { type: 'string' },
             logo: { type: 'string', format: 'uri' },
+            logo_position: {
+              type: 'string',
+              enum: [
+                'auto',
+                'top_left',
+                'top_right',
+                'top_center',
+                'bottom_left',
+                'bottom_right',
+                'bottom_center',
+                'center',
+              ],
+              description: 'Preferred logo placement during generation',
+            },
+            business_locations: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/BusinessLocation' },
+            },
             contact_number: { type: 'string' },
             address: { type: 'string' },
           },
@@ -107,6 +135,9 @@ export const customerApiPaths = {
                     id: { type: 'string', format: 'uuid' },
                     image_url: { type: 'string' },
                     prompt_used: { type: 'string' },
+                    product_reference_input_url: { type: 'string', format: 'uri', nullable: true },
+                    product_reference_resolved_url: { type: 'string', format: 'uri', nullable: true },
+                    brand_logo_url: { type: 'string', format: 'uri', nullable: true },
                     name: { type: 'string', nullable: true },
                     is_liked: { type: 'boolean' },
                     created_at: { type: 'string', format: 'date-time' },
@@ -260,17 +291,49 @@ export const customerApiPaths = {
       operationId: 'customerGenerateImage',
       summary: 'Generate an image',
       description: `Generates an AI image using campaign settings and an optional free-text prompt.
-        
-**Prompt assembly order:**
-1. \`basePrompt\` (user's free-text)
-2. Prompt parts from the campaign's product type
+
+---
+
+### Async + WebSocket (target contract)
+
+**ADR:** \`docs/adr/0001-async-image-generation-websocket.md\` · **Diagrams:** \`docs/image-generation-flow.md\`
+
+1. Client opens an **authenticated Socket.io** connection **before** (or immediately after) calling generate — if the job finishes while nobody is in room \`user:<yourUserId>\`, the push is **not buffered** and you will miss events.
+2. \`POST /api/customer/generate\` returns **\`202\`** with \`jobId\` (schema: **GenerationJobAccepted**).
+3. Server processes the job; on success it persists **Asset** then emits **\`generation.completed\`** (**WsEventGenerationCompleted**). On failure: **\`generation.failed\`**. Optional: **\`generation.progress\`**.
+4. **Poll fallback:** \`GET /api/customer/generation-jobs/:jobId\` returns status and \`asset\` when \`completed\` (Postman-friendly).
+
+OpenAPI 3.0 does not describe WebSocket endpoints; event names and JSON bodies are documented via **components/schemas** \`WsEventGeneration*\`.
+
+---
+
+### Prompt assembly order
+
+**A — Platform preamble (prepended to everything below)**  
+Active \`prompt_building_blocks\` with \`block_key = image_gen_platform_system\` and \`category = system\` (global \`product_type_id\` NULL, or scoped override if the campaign has \`product_type_id\`). If missing, nothing is prepended (run migration \`015\` or create the row in Admin → prompt blocks). Joined with a blank line before part B.
+
+**B — User-facing prompt** (same order as \`buildPrompt()\`)
+
+1. Campaign \`description\` (when \`campaignId\` is set) then request \`basePrompt\`, joined with a blank line when both are present; request-only when there is no campaign
+2. Prompt parts from the campaign's product type (only when \`campaignId\` is set **and** the campaign has \`product_type_id\`)
 3. \`visualStyle\` and \`mood\`
 4. Model/gender modifier if enabled
 5. Custom sections sorted by \`prompt_weight\` (high → medium → low)
+6. Profile \`business_name\` / \`logo\` / \`logo_position\` / \`business_locations\` (when set). **Product reference URL:** optional body \`productReferenceUrl\` always wins when set. For **customer-owned** campaigns, if omitted, the row's \`product_reference_url\` is used. For **platform prebuilt** campaigns, the template's \`product_reference_url\` is **not** reused (one shared row per template)—send \`productReferenceUrl\` per generation so each user can supply their own product shot. Branding / product hints go into the text prompt; \`logo_url\`, \`logo_position\`, and \`product_reference_url\` are also sent on the legacy external HTTP gateway when set. OpenAI DALL-E 3 is text-only.
 
 If \`campaignId\` is supplied, campaign settings are used as defaults and any per-field overrides in the request body take precedence.
 
-**Backend behavior:** Unless \`IMAGE_GENERATION_USE_EXTERNAL=true\` and \`IMAGE_GENERATION_API_URL\` are set, the server uses mock images (placeholders), not a real provider.`,
+The persisted **\`prompt_used\`** field is the **full** string (A + B) sent to the image provider. Each **Asset** row also stores **\`product_reference_input_url\`**, **\`product_reference_resolved_url\`**, and **\`brand_logo_url\`** for that generation (see **Asset** schema).
+
+### Current deployment behavior
+
+If **\`REDIS_URL\`** is **not** set, the server responds with **\`201 Created\`** and the full **Asset** in one round-trip (synchronous). With **\`REDIS_URL\`** set (and \`IMAGE_GENERATION_ASYNC\` not \`false\`), it responds **\`202\`** and processes the job via **BullMQ**, notifying the client over **Socket.io** (\`/socket.io\`). **Socket JWT:** \`auth.token\`, or header \`Authorization: Bearer <jwt>\`, or query \`token\` / \`access_token\` (same Supabase access JWT as REST).
+
+### Image backend (providers)
+
+- **Legacy first:** If \`IMAGE_GENERATION_USE_EXTERNAL=true\` and \`IMAGE_GENERATION_API_URL\` are set, requests go to that HTTP gateway (env API key).
+- **Otherwise:** \`image_generation_settings.active_provider\` selects **mock**, **OpenAI**, **Google (Imagen)**, **Grok**, or **external_http**. Admin: \`/admin/image-generation/*\`. **OpenAI** uses **edits** (reference images) when \`productReferenceUrl\` / profile-derived \`logoUrl\` are present; other providers still use their text path until extended.
+`,
       tags: ['Customer API'],
       security,
       requestBody: {
@@ -290,13 +353,76 @@ If \`campaignId\` is supplied, campaign settings are used as defaults and any pe
               example: 'Cyberpunk City',
               description: 'Optional display title stored on the asset (asset library card)',
             },
+            productReferenceUrl: {
+              type: 'string',
+              format: 'uri',
+              description:
+                'Per-request product reference image (HTTPS). Overrides the campaign stored URL when both exist. For prebuilt campaigns, send this each time—the template row URL is not applied so each user can use their own product image.',
+            },
+            selectedLocationIds: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Optional profile business location ids to include in generation context. If omitted, default-included locations are used.',
+            },
+            includeDefaultLocations: {
+              type: 'boolean',
+              default: true,
+              description: 'When true, includes profile locations marked include_by_default if selectedLocationIds is absent.',
+            },
           },
         }}},
       },
       responses: {
-        201: assetResponse('Generated image saved as asset'),
-        401: err401, 403: err403,
+        201: {
+          ...assetResponse('**Synchronous (current).** Generated image saved as asset; full row returned in this response.'),
+        },
+        202: {
+          description:
+            '**Async.** Job accepted. Prefer Socket.io **already connected** before this call, or poll `GET /api/customer/generation-jobs/{jobId}` until `status` is `completed` / `failed`.',
+          content: {
+            'application/json': {
+              schema: { $ref: '#/components/schemas/GenerationJobAccepted' },
+            },
+          },
+        },
+        401: err401,
+        403: err403,
         500: { description: 'Generation failed', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+      },
+    },
+  },
+
+  '/api/customer/generation-jobs/{jobId}': {
+    get: {
+      operationId: 'customerGetGenerationJob',
+      summary: 'Get async generation job status',
+      description:
+        'Returns `pending` | `processing` | `completed` | `failed` for your job. When `completed`, `asset` is the saved **Asset** (same shape as sync `POST /generate` response). Use when Socket.io events were missed.',
+      tags: ['Customer API'],
+      security,
+      parameters: [
+        { in: 'path', name: 'jobId', required: true, schema: { type: 'string', format: 'uuid' } },
+      ],
+      responses: {
+        200: {
+          description: 'Job status',
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  success: { type: 'boolean', example: true },
+                  data: { $ref: '#/components/schemas/GenerationJobStatus' },
+                },
+              },
+            },
+          },
+        },
+        401: err401,
+        403: err403,
+        404: err404,
+        500: { description: 'Server error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
       },
     },
   },
@@ -306,11 +432,13 @@ If \`campaignId\` is supplied, campaign settings are used as defaults and any pe
     get: {
       operationId: 'customerListAssets',
       summary: 'List generated image assets',
+      description:
+        'Paginated list. Omits per-row `metadata` JSON in this response (use GET `/api/customer/assets/{id}` for full metadata). Pass `search`, `page`, and `limit` as **query** parameters — not a JSON body.',
       tags: ['Customer API'],
       security,
       parameters: [
-        { in: 'query', name: 'page', schema: { type: 'integer', default: 1 } },
-        { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 } },
+        { in: 'query', name: 'page', schema: { type: 'integer', default: 1, minimum: 1 }, description: '1-based page' },
+        { in: 'query', name: 'limit', schema: { type: 'integer', default: 20, minimum: 1, maximum: 100 } },
         { in: 'query', name: 'search', schema: { type: 'string' }, description: 'Search by prompt or display name' },
       ],
       responses: {
@@ -354,6 +482,96 @@ If \`campaignId\` is supplied, campaign settings are used as defaults and any pe
       responses: {
         200: assetResponse('Updated asset'),
         400: { description: 'No valid fields', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+  },
+
+  // ─── Devices ──────────────────────────────────────────
+  '/api/customer/devices': {
+    get: {
+      operationId: 'customerListDevices',
+      summary: 'List my devices',
+      description: 'Returns all device records for the authenticated user.',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: {
+          description: 'Device list',
+          content: { 'application/json': { schema: {
+            type: 'object',
+            properties: {
+              success: { type: 'boolean', example: true },
+              data: { type: 'array', items: { $ref: '#/components/schemas/UserDevice' } },
+            },
+          }}},
+        },
+        401: err401, 403: err403,
+      },
+    },
+    post: {
+      operationId: 'customerUpsertDevice',
+      summary: 'Create or update my device by device id',
+      description:
+        'Upserts by `(user_id, device_id)`. If `token` is already attached to another row, that token ownership is reassigned before upsert.',
+      tags: ['Customer API'],
+      security,
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/UserDeviceUpsertInput' } } },
+      },
+      responses: {
+        201: userDeviceResponse('Created or updated device'),
+        400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403,
+      },
+    },
+  },
+
+  '/api/customer/devices/{deviceId}': {
+    parameters: [
+      {
+        in: 'path',
+        name: 'deviceId',
+        required: true,
+        schema: { type: 'string' },
+        description: 'Client-generated stable device identifier',
+      },
+    ],
+    get: {
+      operationId: 'customerGetDevice',
+      summary: 'Get my device by device id',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: userDeviceResponse('Device'),
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+    put: {
+      operationId: 'customerUpdateDevice',
+      summary: 'Update my device by device id',
+      description: 'Updates token/platform/is_active/last_seen_at. Token conflicts are handled via reassignment.',
+      tags: ['Customer API'],
+      security,
+      requestBody: {
+        required: true,
+        content: { 'application/json': { schema: { $ref: '#/components/schemas/UserDeviceUpdateInput' } } },
+      },
+      responses: {
+        200: userDeviceResponse('Updated device'),
+        400: { description: 'Validation error', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+    delete: {
+      operationId: 'customerDeleteDevice',
+      summary: 'Delete my device by device id',
+      description: 'Hard delete for a device record.',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
         401: err401, 403: err403, 404: err404,
       },
     },

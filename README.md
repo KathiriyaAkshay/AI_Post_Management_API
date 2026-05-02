@@ -104,6 +104,12 @@ npm run dev:frontend   # Frontend only
 npm run build:frontend
 ```
 
+## Product & flow documentation
+
+- **[`docs/PRODUCT_AND_FLOWS.md`](docs/PRODUCT_AND_FLOWS.md)** — product design, admin vs customer flows, async image behavior, and pointers for developers and AI assistants.
+- **[`docs/E2E_CAMPAIGN_TO_IMAGE.md`](docs/E2E_CAMPAIGN_TO_IMAGE.md)** — end-to-end test steps (campaign-options → campaign → generate) and **[scenario CSV template](docs/scenarios/scenario-matrix.template.csv)** for Excel/Sheets.
+- **[`docs/README.md`](docs/README.md)** — index of all docs in this folder.
+
 ## API Documentation
 
 When backend is running, visit **http://localhost:3000/api-docs** for Swagger documentation.

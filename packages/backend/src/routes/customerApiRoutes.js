@@ -10,14 +10,28 @@ import {
   deleteCampaignHandler,
   cloneCampaignHandler,
   generateImageHandler,
+  getGenerationJobHandler,
   listAssetsHandler,
   getAssetHandler,
   patchAssetHandler,
   getProductTypesHandler,
   getCampaignOptionsHandler,
 } from '../controllers/customerApiController.js';
+import {
+  upsertUserDeviceHandler,
+  listUserDevicesHandler,
+  getUserDeviceHandler,
+  updateUserDeviceHandler,
+  deleteUserDeviceHandler,
+} from '../controllers/userDeviceController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleCheck } from '../middleware/roleCheck.js';
+import {
+  upsertUserDeviceValidator,
+  updateUserDeviceValidator,
+  deviceIdParamValidator,
+  handleValidation,
+} from '../validators/userDeviceValidators.js';
 
 const router = Router();
 
@@ -48,10 +62,18 @@ router.post('/campaigns/:id/clone', cloneCampaignHandler);
 
 // Image generation
 router.post('/generate', generateImageHandler);
+router.get('/generation-jobs/:jobId', getGenerationJobHandler);
 
 // Assets
 router.get('/assets', listAssetsHandler);
 router.patch('/assets/:id', patchAssetHandler);
 router.get('/assets/:id', getAssetHandler);
+
+// Devices
+router.post('/devices', upsertUserDeviceValidator, handleValidation, upsertUserDeviceHandler);
+router.get('/devices', listUserDevicesHandler);
+router.get('/devices/:deviceId', deviceIdParamValidator, handleValidation, getUserDeviceHandler);
+router.put('/devices/:deviceId', updateUserDeviceValidator, handleValidation, updateUserDeviceHandler);
+router.delete('/devices/:deviceId', deviceIdParamValidator, handleValidation, deleteUserDeviceHandler);
 
 export default router;

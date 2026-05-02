@@ -1,0 +1,3 @@
+scenario_id,scenario_name,campaign_id,visual_style,aspect_ratio,mood,custom_sections_summary,base_prompt_short,generate_name,expected_output_summary,run_status,http_code_or_job_id,asset_id,notes
+E2E-DEFAULT-01,Own campaign,(fill after create),cinematic,16:9,golden_hour,"Brand: warm SMB vibe (optional)",Iced drinks on patio afternoon light,e2e-summer-01,"Landscape warm marketing still",(not run),,,
+E2E-PREBUILT-01,Prebuilt or clone,(prebuilt id or clone result),from template,from template,from template,n/a,Short line only for test,bakery-e2e-01,"Matches template + line",(not run),,,

@@ -8,15 +8,17 @@ import {
   cloneCampaign,
 } from '../services/campaignService.js';
 import {
-  saveGeneratedImage,
   getAssets,
   getAssetById,
   getDashboardStats,
   updateAsset,
 } from '../services/assetService.js';
-import { buildPrompt, generateImage } from '../services/imageGenerationService.js';
-import { getPromptParts } from '../services/promptService.js';
 import { getCampaignOptions } from '../services/campaignOptionsService.js';
+import { isAsyncImageGenerationEnabled } from '../config/generationConfig.js';
+import { insertGenerationJob, updateGenerationJob, getGenerationJobForUser } from '../services/generationJobService.js';
+import { enqueueImageGeneration } from '../queues/imageGenerationQueue.js';
+import { executeCustomerImageGeneration } from '../services/customerGenerationService.js';
+import { notifyImageGenerationCompleted } from '../services/pushNotificationService.js';
 
 /* ─────────────────────────────────────────────
    Profile
@@ -26,7 +28,7 @@ export async function getProfileHandler(req, res) {
   try {
     const { data, error } = await supabaseAdmin
       .from('profiles')
-      .select('id, email, full_name, username, business_name, logo, contact_number, address, role, created_at')
+      .select('id, email, full_name, username, business_name, logo, logo_position, business_locations, contact_number, address, role, created_at')
       .eq('id', req.user.id)
       .single();
 
@@ -39,10 +41,23 @@ export async function getProfileHandler(req, res) {
 
 export async function updateProfileHandler(req, res) {
   try {
-    const allowed = ['full_name', 'username', 'business_name', 'logo', 'contact_number', 'address'];
+    const allowed = [
+      'full_name',
+      'username',
+      'business_name',
+      'logo',
+      'logo_position',
+      'business_locations',
+      'contact_number',
+      'address',
+    ];
     const updates = {};
     for (const field of allowed) {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
+    }
+
+    if (updates.business_locations !== undefined && !Array.isArray(updates.business_locations)) {
+      return res.status(400).json({ success: false, error: 'business_locations must be an array' });
     }
 
     if (Object.keys(updates).length === 0) {
@@ -145,87 +160,73 @@ export async function cloneCampaignHandler(req, res) {
 
 /**
  * POST /api/customer/generate
- * Body: campaignId?, basePrompt?, name?, visualStyle?, aspectRatio?, mood?,
- *       modelEnabled?, genderFocus? — all optional except you typically send
- *       basePrompt and/or campaignId for meaningful output.
+ * Body: campaignId?, basePrompt?, productReferenceUrl?, name?, visualStyle?, aspectRatio?, mood?,
+ *       modelEnabled?, genderFocus? — all optional; with campaignId, campaign
+ *       description is merged into the scene prompt when basePrompt is absent or combined when both are set.
+ *       productReferenceUrl: per-user product image; required for prebuilt campaigns to attach a reference (template URL is ignored).
  */
 export async function generateImageHandler(req, res) {
   try {
-    const {
-      campaignId,
-      basePrompt = '',
-      name: assetName,
-      visualStyle,
-      aspectRatio,
-      mood,
-      modelEnabled,
-      genderFocus,
-    } = req.body;
+    if (isAsyncImageGenerationEnabled()) {
+      console.log('ASYNC IMAGE GENERATION ENABLED');
+      const job = await insertGenerationJob(req.user.id, req.body);
+      try {
+        await enqueueImageGeneration({ jobId: job.id, userId: req.user.id, body: req.body });
+      } catch (queueErr) {
+        await updateGenerationJob(job.id, {
+          status: 'failed',
+          error_message: queueErr?.message || 'Queue error',
+        });
+        return res.status(503).json({
+          success: false,
+          error: 'Generation queue temporarily unavailable',
+        });
+      }
+      return res.status(202).json({
+        success: true,
+        data: { jobId: job.id, status: 'pending' },
+      });
+    }
 
-    let finalVisualStyle = visualStyle;
-    let finalAspectRatio = aspectRatio ?? '1:1';
-    let finalMood = mood;
-    let finalModelEnabled = modelEnabled ?? false;
-    let finalGenderFocus = genderFocus ?? 'neutral';
-    let promptParts = [];
-    let resolvedCampaignId = campaignId || null;
+    const asset = await executeCustomerImageGeneration(req.user.id, req.body);
+    void notifyImageGenerationCompleted(req.user.id, { jobId: null, asset });
+    return res.status(201).json({ success: true, data: asset });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
 
-    let customSections = [];
+/**
+ * GET /api/customer/generation-jobs/:jobId
+ * Poll async job status when WebSocket events were missed (e.g. client connected after job finished).
+ */
+export async function getGenerationJobHandler(req, res) {
+  try {
+    const job = await getGenerationJobForUser(req.params.jobId, req.user.id);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job not found' });
+    }
 
-    // If campaignId provided, load campaign settings as defaults
-    if (campaignId) {
-      const campaign = await getCustomerCampaignById(campaignId, req.user.id);
-      finalVisualStyle = finalVisualStyle ?? campaign.visual_style;
-      finalAspectRatio = aspectRatio ?? campaign.aspect_ratio ?? '1:1';
-      finalMood = finalMood ?? campaign.mood;
-      finalModelEnabled = modelEnabled ?? campaign.model_enabled ?? false;
-      finalGenderFocus = genderFocus ?? campaign.gender_focus ?? 'neutral';
-      resolvedCampaignId = campaign.id;
-      customSections = Array.isArray(campaign.custom_sections) ? campaign.custom_sections : [];
-
-      // Load prompt parts if campaign has a product type
-      if (campaign.product_type_id) {
-        const parts = await getPromptParts(campaign.product_type_id);
-        promptParts = (parts || []).map((p) => p.content);
+    let asset = null;
+    if (job.status === 'completed' && job.asset_id) {
+      try {
+        asset = await getAssetById(job.asset_id, req.user.id);
+      } catch {
+        asset = null;
       }
     }
 
-    // Build the final prompt
-    const finalPrompt = buildPrompt({
-      basePrompt,
-      visualStyle: finalVisualStyle,
-      mood: finalMood,
-      modelEnabled: finalModelEnabled,
-      genderFocus: finalGenderFocus,
-      promptParts,
-      customSections,
+    res.json({
+      success: true,
+      data: {
+        jobId: job.id,
+        status: job.status,
+        errorMessage: job.error_message,
+        createdAt: job.created_at,
+        updatedAt: job.updated_at,
+        asset,
+      },
     });
-
-    // Call the generation service
-    const result = await generateImage({
-      prompt: finalPrompt,
-      visualStyle: finalVisualStyle,
-      aspectRatio: finalAspectRatio,
-      mood: finalMood,
-      modelEnabled: finalModelEnabled,
-      genderFocus: finalGenderFocus,
-    });
-
-    // Persist the generated image
-    const asset = await saveGeneratedImage({
-      userId: req.user.id,
-      campaignId: resolvedCampaignId,
-      promptUsed: finalPrompt,
-      imageUrl: result.imageUrl,
-      width: result.width,
-      height: result.height,
-      format: result.format,
-      colorSpace: 'sRGB',
-      metadata: { generatedAt: new Date().toISOString() },
-      name: typeof assetName === 'string' && assetName.trim() ? assetName.trim() : null,
-    });
-
-    res.status(201).json({ success: true, data: asset });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -235,9 +236,17 @@ export async function generateImageHandler(req, res) {
    Assets
    ───────────────────────────────────────────── */
 
+function parseListPagination(query) {
+  const page = Math.max(1, parseInt(String(query.page ?? '1'), 10) || 1);
+  const raw = parseInt(String(query.limit ?? '20'), 10);
+  const limit = Math.min(100, Math.max(1, Number.isFinite(raw) && raw > 0 ? raw : 20));
+  const search = String(query.search ?? '').trim();
+  return { page, limit, search };
+}
+
 export async function listAssetsHandler(req, res) {
   try {
-    const { page, limit, search } = req.query;
+    const { page, limit, search } = parseListPagination(req.query);
     const result = await getAssets({ userId: req.user.id, page, limit, search });
     res.json({ success: true, ...result });
   } catch (err) {
