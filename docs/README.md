@@ -7,5 +7,6 @@
 | [**Scenario matrix (CSV)**](./scenarios/scenario-matrix.template.csv) | Template for Excel/Sheets: scenarios, IDs, expected output, run results. |
 | [**Image generation**](./image-generation-flow.md) | Prompt assembly, async 202 + Socket.io + job poll, providers. |
 | [**ADRs**](./adr/README.md) | Architecture decisions (async delivery, encrypted provider keys). |
+| [**Deployment**](./deployment.md) | Runbooks, env vars, build commands, and checklists for shipping the platform. |
 
 OpenAPI is served at **`/api-docs`** when the backend is running.
