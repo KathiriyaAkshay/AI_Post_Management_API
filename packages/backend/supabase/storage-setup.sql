@@ -7,7 +7,8 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 VALUES
   ('generated-images', 'generated-images', TRUE, 52428800, ARRAY['image/png', 'image/jpeg', 'image/webp', 'image/gif']),
   ('product-references', 'product-references', FALSE, 10485760, ARRAY['image/png', 'image/jpeg', 'image/webp']),
-  ('campaign-thumbnails', 'campaign-thumbnails', TRUE, 5242880, ARRAY['image/png', 'image/jpeg', 'image/webp'])
+  ('campaign-thumbnails', 'campaign-thumbnails', TRUE, 5242880, ARRAY['image/png', 'image/jpeg', 'image/webp']),
+  ('profile-logos', 'profile-logos', TRUE, 5242880, ARRAY['image/png', 'image/jpeg', 'image/webp'])
 ON CONFLICT (id) DO NOTHING;
 
 -- 2. Storage RLS policies for generated-images
@@ -51,5 +52,14 @@ CREATE POLICY "Customers manage own campaign thumbnails"
   ON storage.objects FOR ALL
   USING (
     bucket_id = 'campaign-thumbnails'
+    AND auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- 5. Profile logos (public read; users manage own prefix)
+DROP POLICY IF EXISTS "Users manage own profile logos" ON storage.objects;
+CREATE POLICY "Users manage own profile logos"
+  ON storage.objects FOR ALL
+  USING (
+    bucket_id = 'profile-logos'
     AND auth.uid()::text = (storage.foldername(name))[1]
   );

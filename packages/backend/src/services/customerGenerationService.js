@@ -1,9 +1,10 @@
 import { supabaseAdmin } from '../config/supabase.js';
+import { getObjectStorage } from '../storage/getObjectStorage.js';
 import { getCustomerCampaignById } from './campaignService.js';
 import { getPromptParts } from './promptService.js';
 import { buildPrompt, generateImage } from './imageGenerationService.js';
 import { saveGeneratedImage } from './assetService.js';
-import { mirrorGeneratedImageToSupabase } from './generatedImageStorageService.js';
+import { mirrorGeneratedImageToStorage } from './generatedImageStorageService.js';
 import {
   getPlatformImageSystemPreamble,
   mergePlatformAndUserPrompt,
@@ -286,11 +287,11 @@ export async function executeCustomerImageGeneration(userId, body) {
     format: result?.format || null,
   });
 
-  const { publicUrl: persistedImageUrl, storagePath } = await mirrorGeneratedImageToSupabase(
+  const { publicUrl: persistedImageUrl, storagePath } = await mirrorGeneratedImageToStorage(
     userId,
     result.imageUrl
   );
-  console.log('[generation] storage:mirrored', {
+  console.log('[generation] storage:persisted', {
     userId,
     hasStoragePath: Boolean(storagePath),
     persistedUrlHost: (() => {
@@ -330,7 +331,13 @@ export async function executeCustomerImageGeneration(userId, body) {
         includeDefaultLocations: includeDefaultLocations !== false,
         locationsUsed: resolvedLocations,
       },
-      ...(storagePath ? { storagePath, mirroredToSupabase: true } : {}),
+      ...(storagePath
+        ? {
+            storagePath,
+            persistedToStorage: true,
+            storageProvider: getObjectStorage().provider,
+          }
+        : {}),
       // Keep only https provider URLs in DB; never store data: blobs (they mirror to `image_url` anyway).
       ...(persistedImageUrl !== result.imageUrl && result.imageUrl
         && !String(result.imageUrl).trim().toLowerCase().startsWith('data:')

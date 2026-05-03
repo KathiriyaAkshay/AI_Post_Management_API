@@ -13,6 +13,9 @@ function assetDisplayName(asset) {
 
 function previewImageUrl(asset) {
   if (!asset || typeof asset !== 'object') return null;
+  const signed =
+    typeof asset.image_display_url === 'string' ? asset.image_display_url.trim() : '';
+  if (signed.startsWith('https://') || signed.startsWith('http://')) return signed;
   const url = typeof asset.image_url === 'string' ? asset.image_url.trim() : '';
   if (url.startsWith('https://') || url.startsWith('http://')) return url;
   return null;
