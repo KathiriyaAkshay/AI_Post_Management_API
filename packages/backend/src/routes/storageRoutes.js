@@ -1,51 +1,50 @@
 import { Router } from 'express';
-import { supabaseAdmin } from '../config/supabase.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { getObjectStorage } from '../storage/getObjectStorage.js';
+import { isLogicalBucket } from '../storage/constants.js';
 
 const router = Router();
 
-// All upload routes require authentication
 router.use(authMiddleware);
 
 /**
- * Get a signed upload URL for a file.
- * The client uploads directly to Supabase Storage using this signed URL.
+ * Get a signed upload URL for direct client upload (Supabase Storage or S3 presigned PUT).
  *
  * POST /storage/signed-url
- * Body: { bucket: 'generated-images' | 'product-references' | 'campaign-thumbnails', fileName: string, contentType: string }
+ * Body: { bucket, fileName, contentType? }
  */
 router.post('/signed-url', async (req, res) => {
   try {
     const { bucket, fileName, contentType } = req.body;
 
-    const ALLOWED_BUCKETS = ['generated-images', 'product-references', 'campaign-thumbnails'];
-    if (!ALLOWED_BUCKETS.includes(bucket)) {
-      return res.status(400).json({ success: false, error: `Bucket must be one of: ${ALLOWED_BUCKETS.join(', ')}` });
+    if (!isLogicalBucket(bucket)) {
+      return res.status(400).json({
+        success: false,
+        error: `bucket must be one of: generated-images, product-references, campaign-thumbnails, profile-logos`,
+      });
     }
     if (!fileName) {
       return res.status(400).json({ success: false, error: 'fileName is required' });
     }
 
-    // Namespace under the user's ID to avoid collisions
-    const filePath = `${req.user.id}/${Date.now()}-${fileName}`;
+    const storagePath = `${req.user.id}/${Date.now()}-${fileName}`;
+    const storage = getObjectStorage();
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUploadUrl(filePath);
+    const { signedUrl, headers } = await storage.createSignedUpload({
+      bucket,
+      storagePath,
+      contentType: typeof contentType === 'string' ? contentType : undefined,
+    });
 
-    if (error) throw error;
-
-    // Build the public URL
-    const { data: publicUrlData } = supabaseAdmin.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
+    const publicUrl = storage.resolvePublicUrlAfterUpload(bucket, storagePath);
 
     res.json({
       success: true,
       data: {
-        signedUrl: data.signedUrl,
-        filePath,
-        publicUrl: publicUrlData.publicUrl,
+        signedUrl,
+        uploadHeaders: headers || {},
+        filePath: storagePath,
+        publicUrl,
       },
     });
   } catch (err) {
@@ -54,10 +53,10 @@ router.post('/signed-url', async (req, res) => {
 });
 
 /**
- * Get a signed download URL for a private file.
+ * Get a signed download URL for a private object (or short-lived access).
  *
  * POST /storage/download-url
- * Body: { bucket: string, filePath: string, expiresIn: number (seconds, default 3600) }
+ * Body: { bucket, filePath, expiresIn? }
  */
 router.post('/download-url', async (req, res) => {
   try {
@@ -66,14 +65,18 @@ router.post('/download-url', async (req, res) => {
     if (!bucket || !filePath) {
       return res.status(400).json({ success: false, error: 'bucket and filePath are required' });
     }
+    if (!isLogicalBucket(bucket)) {
+      return res.status(400).json({ success: false, error: 'Invalid bucket' });
+    }
 
-    const { data, error } = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUrl(filePath, expiresIn);
+    const storage = getObjectStorage();
+    const { signedUrl } = await storage.createSignedDownload({
+      bucket,
+      storagePath: filePath,
+      expiresInSeconds: expiresIn,
+    });
 
-    if (error) throw error;
-
-    res.json({ success: true, data: { signedUrl: data.signedUrl } });
+    res.json({ success: true, data: { signedUrl } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

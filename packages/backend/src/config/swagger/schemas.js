@@ -264,7 +264,19 @@ export const schemas = {
         nullable: true,
         description: 'Profile logo URL at generation time.',
       },
-      image_url: { type: 'string', format: 'uri' },
+      image_url: {
+        type: 'string',
+        format: 'uri',
+        description:
+          'Canonical stored object URI (stable in DB). With private S3, anonymous GET may return 403.',
+      },
+      image_display_url: {
+        type: 'string',
+        format: 'uri',
+        nullable: true,
+        description:
+          'When using S3: presigned GET URL for display (`<img src>`). Prefer over `image_url` when set. Default TTL is 24 hours (`S3_ASSET_DISPLAY_URL_EXPIRY_SECONDS`); refresh via asset GET/list after expiry.',
+      },
       file_size: { type: 'integer', nullable: true },
       format: { type: 'string', example: 'PNG' },
       width: { type: 'integer', example: 1024 },
@@ -274,7 +286,7 @@ export const schemas = {
         type: 'object',
         nullable: true,
         description:
-          'Includes `generatedAt`. May include `provider`, `model`, `generationMode`, `openaiRoute`; after mirror to Storage, `storagePath`, `mirroredToSupabase`. `originalProviderImageUrl` may be an ephemeral https URL before copy. API and WebSocket payloads omit any `data:` (inline) image values; use `image_url` for the image.',
+          'Includes `generatedAt`. May include `provider`, `model`, `generationMode`, `openaiRoute`; after persist to object storage, `storagePath`, `persistedToStorage`, `storageProvider` (`supabase` | `s3`). `originalProviderImageUrl` may be an ephemeral https URL before copy. API and WebSocket payloads omit any `data:` (inline) image values; prefer top-level `image_display_url` when set (S3), else `image_url`.',
       },
       created_at: { type: 'string', format: 'date-time' },
     },

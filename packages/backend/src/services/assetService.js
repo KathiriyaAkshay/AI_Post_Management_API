@@ -1,4 +1,8 @@
 import { supabaseAdmin } from '../config/supabase.js';
+import {
+  enrichGeneratedImageRowWithDisplayUrl,
+  enrichGeneratedImageRowsWithDisplayUrls,
+} from './assetDisplayUrl.js';
 
 const DATA_URL_RE = /^data:/i;
 
@@ -27,7 +31,7 @@ const ADMIN_ASSET_LIST_EMBED = `${GENERATED_IMAGE_LIST_SELECT}, campaigns(id, na
 
 /**
  * Strips `data:` (inline) image payloads from `metadata` for API and realtime JSON.
- * Use `image_url` on the row for the public image link; we never return multi‑MB blobs in fields.
+ * Use `image_display_url` when present (S3 presigned), else `image_url`; we never return multi‑MB blobs in fields.
  * @param {object|null|undefined} metadata
  * @returns {object}
  */
@@ -97,7 +101,8 @@ export async function saveGeneratedImage({
     .single();
 
   if (error) throw error;
-  return assetForPublicResponse(data);
+  const shaped = assetForPublicResponse(data);
+  return enrichGeneratedImageRowWithDisplayUrl(shaped);
 }
 
 /**
@@ -123,7 +128,8 @@ export async function getAssets({ userId, page = 1, limit = 20, search = '' } = 
   const { data, error, count } = await query;
   if (error) throw error;
 
-  const rows = (data || []).map((row) => assetForPublicResponse(row));
+  const shaped = (data || []).map((row) => assetForPublicResponse(row));
+  const rows = await enrichGeneratedImageRowsWithDisplayUrls(shaped);
   return {
     data: rows,
     meta: {
@@ -148,7 +154,8 @@ export async function getAssetById(id, userId) {
 
   if (error) throw error;
   if (!data) throw new Error('Asset not found');
-  return assetForPublicResponse(data);
+  const shaped = assetForPublicResponse(data);
+  return enrichGeneratedImageRowWithDisplayUrl(shaped);
 }
 
 /**
@@ -222,12 +229,14 @@ export async function getDashboardStats(userId) {
     chartData.push({ date: key, count: dailyCounts[key] || 0 });
   }
 
+  const recentWithDisplay = await enrichGeneratedImageRowsWithDisplayUrls(recentImages || []);
+
   return {
     totalImages: totalCount || 0,
     totalCampaigns: campaignCount || 0,
     yesterdayImages: yesterdayCount || 0,
     weekImages: weekCount || 0,
-    recentImages: recentImages || [],
+    recentImages: recentWithDisplay,
     chartData,
   };
 }
@@ -255,7 +264,8 @@ export async function getAllAssets({ page = 1, limit = 20, search = '', userId =
   const { data, error, count } = await query;
   if (error) throw error;
 
-  const rows = (data || []).map((row) => assetForPublicResponse(row));
+  const shaped = (data || []).map((row) => assetForPublicResponse(row));
+  const rows = await enrichGeneratedImageRowsWithDisplayUrls(shaped);
   return {
     data: rows,
     meta: {
@@ -289,5 +299,6 @@ export async function updateAsset(id, userId, { name, isLiked } = {}) {
 
   if (error) throw error;
   if (!data) throw new Error('Asset not found');
-  return assetForPublicResponse(data);
+  const shaped = assetForPublicResponse(data);
+  return enrichGeneratedImageRowWithDisplayUrl(shaped);
 }

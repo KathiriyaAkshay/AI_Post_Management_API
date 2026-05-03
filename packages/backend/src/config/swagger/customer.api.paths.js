@@ -134,6 +134,12 @@ export const customerApiPaths = {
                   properties: {
                     id: { type: 'string', format: 'uuid' },
                     image_url: { type: 'string' },
+                    image_display_url: {
+                      type: 'string',
+                      format: 'uri',
+                      nullable: true,
+                      description: 'S3 presigned URL when applicable',
+                    },
                     prompt_used: { type: 'string' },
                     product_reference_input_url: { type: 'string', format: 'uri', nullable: true },
                     product_reference_resolved_url: { type: 'string', format: 'uri', nullable: true },

@@ -1,7 +1,6 @@
 import { randomUUID } from 'crypto';
-import { supabaseAdmin } from '../config/supabase.js';
-
-const BUCKET = 'generated-images';
+import { getObjectStorage } from '../storage/getObjectStorage.js';
+import { GENERATED_IMAGES_LOGICAL_BUCKET } from '../storage/constants.js';
 
 function extensionFromMime(mime) {
   if (!mime) return 'png';
@@ -23,41 +22,32 @@ function parseDataUrl(dataUrl) {
 }
 
 /**
- * @param {string} url
- */
-function isAlreadyOurGeneratedPublicUrl(url) {
-  const base = process.env.SUPABASE_URL?.replace(/\/$/, '');
-  if (!base || typeof url !== 'string') return false;
-  return url.startsWith(`${base}/storage/v1/object/public/${BUCKET}/`);
-}
-
-/**
- * Downloads a provider result (HTTPS URL or data URL) and uploads to Supabase
- * `generated-images` so `generated_images.image_url` does not expire (OpenAI Azure SAS, etc.).
+ * Downloads a provider result (HTTPS URL or data URL) and uploads via the configured object storage
+ * (`generated-images`) so `generated_images.image_url` does not expire (OpenAI Azure SAS, etc.).
  *
- * If `SUPABASE_SECRET_KEY` is unset, returns the original URL unchanged (dev only — URLs may expire).
+ * If mirroring is unavailable (Supabase without service role), returns the original URL unchanged (dev only).
  *
  * @param {string} userId
  * @param {string} imageUrlOrDataUrl
  * @returns {Promise<{ publicUrl: string, storagePath: string }>}
  */
-export async function mirrorGeneratedImageToSupabase(userId, imageUrlOrDataUrl) {
+export async function mirrorGeneratedImageToStorage(userId, imageUrlOrDataUrl) {
   if (!imageUrlOrDataUrl || typeof imageUrlOrDataUrl !== 'string') {
-    throw new Error('mirrorGeneratedImageToSupabase: missing image URL');
+    throw new Error('mirrorGeneratedImageToStorage: missing image URL');
   }
 
-  if (!supabaseAdmin) {
+  const storage = getObjectStorage();
+
+  if (!storage.canMirrorGeneratedImages()) {
     console.warn(
-      '[generatedImageStorage] SUPABASE_SECRET_KEY missing; keeping provider URL (OpenAI/Azure links expire).'
+      '[generatedImageStorage] Mirroring disabled (e.g. SUPABASE_SECRET_KEY missing); keeping provider URL (links may expire).'
     );
     return { publicUrl: imageUrlOrDataUrl, storagePath: '' };
   }
 
-  if (isAlreadyOurGeneratedPublicUrl(imageUrlOrDataUrl)) {
-    const prefix = `/storage/v1/object/public/${BUCKET}/`;
-    const idx = imageUrlOrDataUrl.indexOf(prefix);
-    const storagePath = idx >= 0 ? decodeURIComponent(imageUrlOrDataUrl.slice(idx + prefix.length)) : '';
-    return { publicUrl: imageUrlOrDataUrl, storagePath };
+  const owned = storage.parseOwnedGeneratedImageUrl(imageUrlOrDataUrl);
+  if (owned?.storagePath) {
+    return { publicUrl: imageUrlOrDataUrl, storagePath: owned.storagePath };
   }
 
   let buffer;
@@ -83,19 +73,19 @@ export async function mirrorGeneratedImageToSupabase(userId, imageUrlOrDataUrl) 
   const ext = extensionFromMime(contentType);
   const storagePath = `${userId}/${randomUUID()}.${ext}`;
 
-  const { error: upErr } = await supabaseAdmin.storage.from(BUCKET).upload(storagePath, buffer, {
-    contentType,
-    upsert: false,
-  });
-  if (upErr) {
-    throw new Error(`Storage upload failed: ${upErr.message}`);
-  }
+  const { publicUrl } = await storage.uploadBuffer(
+    GENERATED_IMAGES_LOGICAL_BUCKET,
+    storagePath,
+    buffer,
+    contentType
+  );
 
-  const { data: pub } = supabaseAdmin.storage.from(BUCKET).getPublicUrl(storagePath);
-  const publicUrl = pub?.publicUrl;
   if (!publicUrl) {
     throw new Error('Could not resolve public URL for uploaded generated image');
   }
 
   return { publicUrl, storagePath };
 }
+
+/** @deprecated Use mirrorGeneratedImageToStorage */
+export const mirrorGeneratedImageToSupabase = mirrorGeneratedImageToStorage;
