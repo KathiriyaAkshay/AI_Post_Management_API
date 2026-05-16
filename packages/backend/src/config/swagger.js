@@ -8,6 +8,7 @@ import { customerApiPaths } from './swagger/customer.api.paths.js';
 import { storagePaths } from './swagger/storage.paths.js';
 import { promptBlocksAdminPaths } from './swagger/prompt-blocks.admin.paths.js';
 import { imageGenerationAdminPaths } from './swagger/image-generation.admin.paths.js';
+import { feedbackAdminPaths } from './swagger/feedback.admin.paths.js';
 
 /** @type {import('swagger-ui-express').SwaggerUiOptions} */
 export const swaggerOptions = {
@@ -39,7 +40,7 @@ The Nexus Hub backend exposes two sets of APIs:
 | Prefix | Audience | Auth |
 |---|---|---|
 | \`/auth\` | All | None / Bearer |
-| \`/customers\`, \`/prompts\`, \`/admin/*\` (incl. \`/admin/prompt-blocks\`, \`/admin/image-generation\`) | Admin only | Bearer (admin) |
+| \`/customers\`, \`/prompts\`, \`/admin/*\` (incl. \`/admin/feedback\`, \`/admin/prompt-blocks\`, \`/admin/image-generation\`) | Admin only | Bearer (admin) |
 | \`/api/customer/*\` | Customers | Bearer (customer) |
 | \`/storage\` | Both | Bearer |
 
@@ -100,11 +101,12 @@ Every customer generation prepends a **platform preamble** to the user-facing pr
     { name: 'Prompts (Admin)', description: 'Product types and prompt part configuration — admin only' },
     { name: 'Campaigns (Admin)', description: 'Prebuilt campaign CRUD — admin only' },
     { name: 'Campaign Options (Admin)', description: 'Visual style, aspect ratio, mood & gender focus option configuration — admin only' },
+    { name: 'Feedback (Admin)', description: 'Aggregate customer experience feedback (`customer_feedback`) — list, inspect, edit, delete.' },
     { name: 'Prompt blocks (Admin)', description: 'Reusable DB-backed prompt fragments — admin only. Global `image_gen_platform_system` (category `system`) prepends to every customer image prompt; see API overview.' },
     { name: 'Image Generation (Admin)', description: 'Active image provider + encrypted API keys (`/admin/image-generation/*`). See API overview for PROVIDER_KEYS_MASTER_KEY and legacy env external gateway.' },
     {
       name: 'Customer API',
-      description: `Customer JWT APIs — profile, dashboard, campaigns, campaign options, assets, storage.
+      description: `Customer JWT APIs — profile, dashboard, campaigns, campaign options, assets, storage, **experience feedback** (\`/api/customer/feedback\`).
 
 **Image generation:** \`POST /api/customer/generate\` — see operation notes for **synchronous (201)** vs **async + WebSocket (202 + jobId)**, platform system preamble (\`image_gen_platform_system\`), and prompt assembly. WebSocket payload shapes: **components/schemas** (\`WsEventGeneration*\`).`,
     },
@@ -119,6 +121,7 @@ Every customer generation prepends a **platform preamble** to the user-facing pr
     ...campaignOptionsPaths,
     ...promptBlocksAdminPaths,
     ...imageGenerationAdminPaths,
+    ...feedbackAdminPaths,
     ...customerApiPaths,
     ...storagePaths,
     '/health': {

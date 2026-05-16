@@ -109,6 +109,108 @@ export const customerApiPaths = {
     },
   },
 
+  '/api/customer/feedback': {
+    get: {
+      operationId: 'customerListFeedback',
+      summary: 'List my feedback submissions',
+      tags: ['Customer API'],
+      security,
+      parameters: [
+        { in: 'query', name: 'page', schema: { type: 'integer', default: 1 } },
+        { in: 'query', name: 'limit', schema: { type: 'integer', default: 20 } },
+      ],
+      responses: {
+        200: { description: 'Paginated feedback rows', content: { 'application/json': { schema: {
+          type: 'object', properties: {
+            success: { type: 'boolean', example: true },
+            data: { type: 'array', items: { $ref: '#/components/schemas/CustomerFeedbackEntry' } },
+            meta: { $ref: '#/components/schemas/PaginationMeta' },
+          },
+        }}}},
+        401: err401, 403: err403,
+      },
+    },
+    post: {
+      operationId: 'customerCreateFeedback',
+      summary: 'Submit experience feedback',
+      description:
+        'Creates a new row in `customer_feedback`. Body may be `{ "payload": { ... } }` or a JSON object/array.',
+      tags: ['Customer API'],
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { oneOf: [{ $ref: '#/components/schemas/CustomerFeedbackPayloadBody' }, { type: 'object', additionalProperties: true }] },
+          },
+        },
+      },
+      responses: {
+        201: { description: 'Created', content: { 'application/json': { schema: {
+          type: 'object', properties: {
+            success: { type: 'boolean', example: true },
+            data: { $ref: '#/components/schemas/CustomerFeedbackEntry' },
+          },
+        }}}},
+        400: { description: 'Invalid payload', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403,
+      },
+    },
+  },
+
+  '/api/customer/feedback/{id}': {
+    parameters: [{ in: 'path', name: 'id', required: true, schema: { type: 'string', format: 'uuid' } }],
+    get: {
+      operationId: 'customerGetFeedback',
+      summary: 'Get one of my feedback submissions',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: { description: 'Feedback row', content: { 'application/json': { schema: {
+          type: 'object', properties: {
+            success: { type: 'boolean', example: true },
+            data: { $ref: '#/components/schemas/CustomerFeedbackEntry' },
+          },
+        }}}},
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+    put: {
+      operationId: 'customerUpdateFeedback',
+      summary: 'Replace payload on my feedback row',
+      tags: ['Customer API'],
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { oneOf: [{ $ref: '#/components/schemas/CustomerFeedbackPayloadBody' }, { type: 'object', additionalProperties: true }] },
+          },
+        },
+      },
+      responses: {
+        200: { description: 'Updated', content: { 'application/json': { schema: {
+          type: 'object', properties: {
+            success: { type: 'boolean', example: true },
+            data: { $ref: '#/components/schemas/CustomerFeedbackEntry' },
+          },
+        }}}},
+        400: { description: 'Invalid payload', content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } } },
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+    delete: {
+      operationId: 'customerDeleteFeedback',
+      summary: 'Delete my feedback row',
+      tags: ['Customer API'],
+      security,
+      responses: {
+        200: { description: 'Deleted', content: { 'application/json': { schema: { $ref: '#/components/schemas/SuccessMessage' } } } },
+        401: err401, 403: err403, 404: err404,
+      },
+    },
+  },
+
   // ─── Dashboard ────────────────────────────────────────
   '/api/customer/dashboard': {
     get: {

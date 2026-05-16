@@ -72,6 +72,44 @@ export const schemas = {
     },
   },
 
+  CustomerFeedbackPayloadBody: {
+    type: 'object',
+    description:
+      'Either `{ "payload": { ... } }` or a bare JSON object/array as the body (same limits as `payload`).',
+    properties: {
+      payload: {
+        type: 'object',
+        additionalProperties: true,
+        description: 'Experience feedback JSON (object or array). Prefer this wrapper for clarity.',
+      },
+    },
+  },
+
+  CustomerFeedbackEntry: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      user_id: { type: 'string', format: 'uuid' },
+      payload: {
+        description: 'Stored JSON (object or array).',
+        type: 'object',
+        additionalProperties: true,
+      },
+      created_at: { type: 'string', format: 'date-time' },
+      updated_at: { type: 'string', format: 'date-time' },
+      profiles: {
+        type: 'object',
+        nullable: true,
+        description: 'Present on admin list/detail when join succeeds.',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          username: { type: 'string', nullable: true },
+          business_name: { type: 'string', nullable: true },
+        },
+      },
+    },
+  },
+
   // ─── Product Type ────────────────────────────────
   ProductType: {
     type: 'object',
