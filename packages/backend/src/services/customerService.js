@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { stripe } from '../config/stripe.js';
 import { sendCredentialsEmail } from './emailService.js';
+import { assertStoredImageUrlForBucket } from '../storage/storedImageUrlPolicy.js';
 
 /**
  * Creates a customer user via Supabase Admin API, Stripe, and sends credentials email
@@ -18,6 +19,10 @@ export async function createCustomer({
 }) {
   if (!supabaseAdmin) {
     throw new Error('SUPABASE_SECRET_KEY required');
+  }
+
+  if (logo !== undefined && logo !== null && String(logo).trim()) {
+    assertStoredImageUrlForBucket(String(logo).trim(), 'logo', 'profile-logos');
   }
 
   // 1. Create user in Supabase Auth
@@ -177,6 +182,14 @@ export async function updateCustomer(id, updates) {
       allowedUpdates[field] = updates[field];
     }
   });
+
+  if (
+    allowedUpdates.logo !== undefined
+    && allowedUpdates.logo !== null
+    && String(allowedUpdates.logo).trim()
+  ) {
+    assertStoredImageUrlForBucket(String(allowedUpdates.logo).trim(), 'logo', 'profile-logos');
+  }
 
   if (allowedUpdates.business_locations !== undefined && !Array.isArray(allowedUpdates.business_locations)) {
     throw new Error('business_locations must be an array');

@@ -10,6 +10,10 @@ import {
   mergePlatformAndUserPrompt,
 } from './platformImagePromptService.js';
 import { optimizePromptBestEffort } from './promptOptimizationService.js';
+import {
+  assertStoredImageUrlForBucket,
+  presignReferenceImagesForProvider,
+} from '../storage/storedImageUrlPolicy.js';
 
 function normalizeBusinessLocations(raw) {
   if (!Array.isArray(raw)) return [];
@@ -251,6 +255,26 @@ export async function executeCustomerImageGeneration(userId, body) {
     },
   });
   const finalPrompt = promptOptimization.optimizedPrompt;
+
+  const refForProvider = typeof productReferenceUrl === 'string' && productReferenceUrl.trim()
+    ? productReferenceUrl.trim()
+    : '';
+  const logoForProvider = typeof logoUrl === 'string' && logoUrl.trim() ? logoUrl.trim() : '';
+  if (refForProvider) {
+    assertStoredImageUrlForBucket(refForProvider, 'productReferenceUrl', 'product-references');
+  }
+  if (logoForProvider) {
+    assertStoredImageUrlForBucket(logoForProvider, 'logoUrl', 'profile-logos');
+  }
+  const presignedRefs = await presignReferenceImagesForProvider({
+    logoUrl: logoForProvider || undefined,
+    productReferenceUrl: refForProvider || undefined,
+  });
+  const providerProductRefUrl =
+    presignedRefs.productReferenceUrl ?? (refForProvider ? refForProvider : undefined);
+  const providerLogoUrl =
+    presignedRefs.logoUrl ?? (logoForProvider ? logoForProvider : undefined);
+
   console.log('[generation] prompt:optimized', {
     userId,
     usedOptimizer: promptOptimization.usedOptimizer,
@@ -270,12 +294,12 @@ export async function executeCustomerImageGeneration(userId, body) {
     mood: finalMood,
     modelEnabled: finalModelEnabled,
     genderFocus: finalGenderFocus,
-    logoUrl: logoUrl || undefined,
+    logoUrl: providerLogoUrl,
     logoPosition: logoPosition || undefined,
     extra: {
       business_locations: resolvedLocations,
     },
-    productReferenceUrl: productReferenceUrl || undefined,
+    productReferenceUrl: providerProductRefUrl,
   });
   console.log('[generation] provider:result', {
     userId,
