@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../config/supabase.js';
+import { assertCampaignStoredImageUrls } from '../storage/storedImageUrlPolicy.js';
 
 /* ─────────────────────────────────────────────
    Admin: Prebuilt Campaign Management
@@ -69,6 +70,8 @@ export async function createPrebuiltCampaign(adminId, fields) {
     productTypeId,
   } = fields;
 
+  assertCampaignStoredImageUrls({ productReferenceUrl, thumbnailUrl });
+
   const { data, error } = await supabaseAdmin
     .from('campaigns')
     .insert({
@@ -124,6 +127,12 @@ export async function updatePrebuiltCampaign(id, fields) {
   }
 
   if (Object.keys(updates).length === 0) throw new Error('No valid fields to update');
+
+  assertCampaignStoredImageUrls({
+    productReferenceUrl:
+      updates.product_reference_url !== undefined ? updates.product_reference_url : undefined,
+    thumbnailUrl: updates.thumbnail_url !== undefined ? updates.thumbnail_url : undefined,
+  });
 
   const { data, error } = await supabaseAdmin
     .from('campaigns')
@@ -233,6 +242,8 @@ export async function createCustomerCampaign(userId, fields) {
     customSections,
   } = fields;
 
+  assertCampaignStoredImageUrls({ productReferenceUrl, thumbnailUrl });
+
   const { data, error } = await supabaseAdmin
     .from('campaigns')
     .insert({
@@ -284,6 +295,12 @@ export async function updateCustomerCampaign(id, userId, fields) {
 
   if (Object.keys(updates).length === 0) throw new Error('No valid fields to update');
 
+  assertCampaignStoredImageUrls({
+    productReferenceUrl:
+      updates.product_reference_url !== undefined ? updates.product_reference_url : undefined,
+    thumbnailUrl: updates.thumbnail_url !== undefined ? updates.thumbnail_url : undefined,
+  });
+
   const { data, error } = await supabaseAdmin
     .from('campaigns')
     .update(updates)
@@ -327,6 +344,11 @@ export async function cloneCampaign(sourceId, userId) {
     .single();
 
   if (fetchError || !source) throw new Error('Prebuilt campaign not found');
+
+  assertCampaignStoredImageUrls({
+    productReferenceUrl: source.product_reference_url,
+    thumbnailUrl: source.thumbnail_url,
+  });
 
   const { data, error } = await supabaseAdmin
     .from('campaigns')

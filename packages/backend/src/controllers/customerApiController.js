@@ -19,6 +19,11 @@ import { insertGenerationJob, updateGenerationJob, getGenerationJobForUser } fro
 import { enqueueImageGeneration } from '../queues/imageGenerationQueue.js';
 import { executeCustomerImageGeneration } from '../services/customerGenerationService.js';
 import { notifyImageGenerationCompleted } from '../services/pushNotificationService.js';
+import { assertStoredImageUrlForBucket } from '../storage/storedImageUrlPolicy.js';
+
+function apiErrorStatus(err, fallback = 500) {
+  return err?.statusCode === 400 ? 400 : fallback;
+}
 
 /* ─────────────────────────────────────────────
    Profile
@@ -64,6 +69,14 @@ export async function updateProfileHandler(req, res) {
       return res.status(400).json({ success: false, error: 'No valid fields to update' });
     }
 
+    if (
+      updates.logo !== undefined
+      && updates.logo !== null
+      && String(updates.logo).trim()
+    ) {
+      assertStoredImageUrlForBucket(String(updates.logo).trim(), 'logo', 'profile-logos');
+    }
+
     const { data, error } = await supabaseAdmin
       .from('profiles')
       .update(updates)
@@ -74,7 +87,7 @@ export async function updateProfileHandler(req, res) {
     if (error) throw error;
     res.json({ success: true, data });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(apiErrorStatus(err)).json({ success: false, error: err.message });
   }
 }
 
@@ -121,7 +134,7 @@ export async function createCampaignHandler(req, res) {
     const campaign = await createCustomerCampaign(req.user.id, req.body);
     res.status(201).json({ success: true, data: campaign });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(apiErrorStatus(err)).json({ success: false, error: err.message });
   }
 }
 
@@ -130,7 +143,7 @@ export async function updateCampaignHandler(req, res) {
     const campaign = await updateCustomerCampaign(req.params.id, req.user.id, req.body);
     res.json({ success: true, data: campaign });
   } catch (err) {
-    const status = err.message.includes('not found') ? 404 : 500;
+    const status = apiErrorStatus(err, err.message.includes('not found') ? 404 : 500);
     res.status(status).json({ success: false, error: err.message });
   }
 }
@@ -149,7 +162,7 @@ export async function cloneCampaignHandler(req, res) {
     const cloned = await cloneCampaign(req.params.id, req.user.id);
     res.status(201).json({ success: true, data: cloned });
   } catch (err) {
-    const status = err.message.includes('not found') ? 404 : 500;
+    const status = apiErrorStatus(err, err.message.includes('not found') ? 404 : 500);
     res.status(status).json({ success: false, error: err.message });
   }
 }
@@ -192,7 +205,7 @@ export async function generateImageHandler(req, res) {
     void notifyImageGenerationCompleted(req.user.id, { jobId: null, asset });
     return res.status(201).json({ success: true, data: asset });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(apiErrorStatus(err)).json({ success: false, error: err.message });
   }
 }
 

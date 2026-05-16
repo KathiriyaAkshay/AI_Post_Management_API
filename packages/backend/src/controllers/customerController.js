@@ -34,7 +34,8 @@ export async function createCustomerHandler(req, res) {
       },
     });
   } catch (err) {
-    const status = err.status === 422 ? 422 : 400;
+    const status =
+      err?.statusCode === 400 ? 400 : err.status === 422 ? 422 : 400;
     return res.status(status).json({
       success: false,
       error: err.message || 'Customer creation failed',
@@ -67,7 +68,8 @@ export async function updateCustomerHandler(req, res) {
     const result = await customerService.updateCustomer(req.params.id, req.body);
     res.json({ success: true, data: result });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    const status = err?.statusCode === 400 ? 400 : 500;
+    res.status(status).json({ success: false, error: err.message });
   }
 }
 
