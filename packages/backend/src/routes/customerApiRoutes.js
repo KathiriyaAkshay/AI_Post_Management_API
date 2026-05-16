@@ -18,6 +18,13 @@ import {
   getCampaignOptionsHandler,
 } from '../controllers/customerApiController.js';
 import {
+  createCustomerFeedbackHandler,
+  listCustomerFeedbackHandler,
+  getCustomerFeedbackHandler,
+  updateCustomerFeedbackHandler,
+  deleteCustomerFeedbackHandler,
+} from '../controllers/feedbackController.js';
+import {
   upsertUserDeviceHandler,
   listUserDevicesHandler,
   getUserDeviceHandler,
@@ -41,6 +48,12 @@ router.use(authMiddleware, roleCheck(['customer', 'admin']));
 // Profile
 router.get('/profile', getProfileHandler);
 router.put('/profile', updateProfileHandler);
+
+router.get('/feedback', listCustomerFeedbackHandler);
+router.post('/feedback', createCustomerFeedbackHandler);
+router.get('/feedback/:id', getCustomerFeedbackHandler);
+router.put('/feedback/:id', updateCustomerFeedbackHandler);
+router.delete('/feedback/:id', deleteCustomerFeedbackHandler);
 
 // Dashboard
 router.get('/dashboard', getDashboardHandler);
